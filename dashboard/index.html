@@ -68,7 +68,7 @@
 <body>
   <h1>MiddleMan – Game State</h1>
   <div class="toolbar">
-    <label>Port: <input type="number" id="port" value="8766" min="1" max="65535"></label>
+    <label>Port: <input type="number" id="port" value="8765" min="1" max="65535"></label>
     <button id="refresh">Refresh</button>
     <label><input type="checkbox" id="auto" checked> Auto (every tick)</label>
     <span class="status loading" id="status">Loading…</span>
@@ -108,7 +108,7 @@
     const autoEl = document.getElementById('auto');
     const statusEl = document.getElementById('status');
 
-    function base() { return 'http://127.0.0.1:' + (portEl.value || '8766'); }
+    function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
 
     const loadStartTime = Date.now();
     const LOADING_TIMEOUT_MS = 10000;
@@ -216,7 +216,7 @@
           return;
         }
         setStatus(false, e.message || 'Failed to connect');
-        document.getElementById('gameState').innerHTML = '<span class="empty">—</span><p style="margin-top:10px;font-size:12px;color:#94a3b8;max-width:480px"><strong>Failed to connect?</strong><br>1) Start RuneLite with <strong>MiddleMan\\launcher\\launch.bat</strong> (not the normal RuneLite shortcut).<br>2) Open <strong>MiddleMan\middleman.log</strong> to see agent status (e.g. “API listening” = ready).</p>';
+        document.getElementById('gameState').innerHTML = '<span class="empty">—</span><p style="margin-top:10px;font-size:12px;color:#94a3b8;max-width:480px"><strong>Failed to connect?</strong><br>1) Run <strong>MiddleMan.exe</strong> or start RuneLite with <strong>MiddleMan\\launcher\\launch.bat</strong> (not the normal RuneLite shortcut).<br>2) Or run <strong>MiddleMan.exe</strong> to start RuneLite with the agent.<br>3) Open <strong>MiddleMan\middleman.log</strong> to see agent status (e.g. “API listening” = ready).</p>';
         document.getElementById('localPlayer').textContent = '—';
         document.getElementById('players').textContent = '—';
         document.getElementById('npcs').textContent = '—';

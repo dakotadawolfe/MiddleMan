@@ -1,6 +1,8 @@
-# MiddleMan launcher: starts RuneLite with the MiddleMan agent via -javaagent,
-# and without -XX:+DisableAttachMechanism.
-# Run from the RuneLite project root: .\MiddleMan\launcher\launch.ps1
+# MiddleMan launcher: starts RuneLite without -XX:+DisableAttachMechanism.
+# With agent (default): adds -javaagent and REFLECT. Use from MiddleMan.exe or launch.bat.
+# -AttachableOnly: start RuneLite without agent so MiddleMan.exe can attach later.
+
+param([switch]$AttachableOnly)
 
 $ErrorActionPreference = "Stop"
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -23,12 +25,14 @@ if ($ClassPath -is [array]) {
 $MainClass = $Config.mainClass
 $VmArgs = @($Config.vmArgs) | Where-Object { $_ -notmatch "DisableAttachMechanism" }
 
-$AgentJar = Join-Path $Root "MiddleMan\agent\build\MiddleManAgent.jar"
-if (-not (Test-Path $AgentJar)) {
-    Write-Error "Agent JAR not found. Build first: cd MiddleMan\agent; .\build.ps1"
-    exit 1
+if (-not $AttachableOnly) {
+    $AgentJar = Join-Path $Root "MiddleMan\agent\build\MiddleManAgent.jar"
+    if (-not (Test-Path $AgentJar)) {
+        Write-Error "Agent JAR not found. Build first: cd MiddleMan\agent; .\build.bat"
+        exit 1
+    }
+    $VmArgs += "-javaagent:${AgentJar}=8765"
 }
-$VmArgs += "-javaagent:${AgentJar}=8766"
 
 $JreBin = Join-Path $Root "jre\bin\java.exe"
 if (-not (Test-Path $JreBin)) {
@@ -38,20 +42,20 @@ if (-not (Test-Path $JreBin)) {
     $JreBin = "java"
 }
 
-# REFLECT = run client in same JVM as launcher so the MiddleMan agent can see the Client
 $Cmd = @($JreBin) + @($VmArgs) + @("-cp", $Cp, $MainClass, "--launch-mode=REFLECT")
-Write-Host ""
-Write-Host "========== MiddleMan Launcher ==========" -ForegroundColor Cyan
-Write-Host "  Starting RuneLite with MiddleMan agent (launch-mode=REFLECT)"
-Write-Host "  Agent status is written to: $Root\MiddleMan\middleman.log"
-Write-Host "  (Open that file if the dashboard says Failed to connect)"
-Write-Host "========================================" -ForegroundColor Cyan
-Write-Host ""
-Set-Location $Root
-$DashboardPath = Join-Path $MiddleManDir "dashboard\index.html"
-if (Test-Path $DashboardPath) {
-    Start-Process $DashboardPath
+if (-not $AttachableOnly) {
+    Write-Host ""
+    Write-Host "========== MiddleMan Launcher ==========" -ForegroundColor Cyan
+    Write-Host "  Starting RuneLite with MiddleMan agent (launch-mode=REFLECT)"
+    Write-Host "  Agent status: $Root\MiddleMan\middleman.log"
+    Write-Host "========================================" -ForegroundColor Cyan
+    Write-Host ""
+    $DashboardPath = Join-Path $MiddleManDir "dashboard\index.html"
+    if (Test-Path $DashboardPath) {
+        Start-Process $DashboardPath
+    }
 }
+Set-Location $Root
 $exe = $Cmd[0]
 $cmdArgs = $Cmd[1..($Cmd.Length-1)]
 & $exe @cmdArgs
