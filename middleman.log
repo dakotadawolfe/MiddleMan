@@ -1,0 +1,48 @@
+2026-03-13 16:51:31 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 16:51:31 [MiddleMan] Agent thread started.
+2026-03-13 16:51:31 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 16:51:31 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 16:51:36 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 16:51:36 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 16:52:01 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 16:52:01 [MiddleMan] Agent thread started.
+2026-03-13 16:52:01 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 16:52:02 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 16:52:05 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 16:52:06 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 16:57:26 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 16:57:26 [MiddleMan] Agent thread started.
+2026-03-13 16:57:27 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 16:57:27 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 16:57:31 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 16:57:31 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 17:04:51 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 17:04:51 [MiddleMan] Agent thread started.
+2026-03-13 17:04:51 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 17:04:51 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 17:04:54 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 17:04:54 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 17:20:44 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 17:20:44 [MiddleMan] Agent thread started.
+2026-03-13 17:20:44 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 17:20:44 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 17:20:48 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 17:20:48 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 17:24:20 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 17:24:20 [MiddleMan] Agent thread started.
+2026-03-13 17:24:21 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 17:24:21 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 17:24:24 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 17:24:24 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 17:26:27 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 17:26:27 [MiddleMan] Agent thread started.
+2026-03-13 17:26:27 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 17:26:27 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 17:26:31 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 17:26:31 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 17:34:46 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 17:34:46 [MiddleMan] Agent thread started.
+2026-03-13 17:34:46 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 17:34:46 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 17:34:50 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 17:34:50 [MiddleMan] Game state API listening on http://127.0.0.1:8765

@@ -1,0 +1,5 @@
+Premain-Class: middleman.agent.MiddleManAgent
+Agent-Class: middleman.agent.MiddleManAgent
+Can-Redefine-Classes: false
+Can-Retransform-Classes: false
+

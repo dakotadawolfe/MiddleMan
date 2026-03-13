@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>MiddleMan – Game State</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      margin: 0;
+      padding: 12px 16px;
+      background: #1a1a1e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 12px 0; color: #7dd3fc; }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    input[type="number"] { width: 72px; padding: 6px 8px; background: #2d2d33; border: 1px solid #444; color: #e0e0e0; border-radius: 4px; }
+    button {
+      padding: 6px 12px;
+      background: #0ea5e9;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #0284c7; }
+    button.secondary { background: #374151; }
+    button.secondary:hover { background: #4b5563; }
+    label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #2d2d33;
+    }
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+    .status.loading { color: #94a3b8; }
+    section {
+      background: #25252b;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    section h2 { font-size: 0.9rem; margin: 0 0 8px 0; color: #94a3b8; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+    .card {
+      background: #1e1e24;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .card strong { color: #94a3b8; }
+    pre { margin: 0; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .empty { color: #64748b; font-style: italic; }
+  </style>
+</head>
+<body>
+  <h1>MiddleMan – Game State</h1>
+  <div class="toolbar">
+    <label>Port: <input type="number" id="port" value="8765" min="1" max="65535"></label>
+    <button id="refresh">Refresh</button>
+    <label><input type="checkbox" id="auto" checked> Auto (every tick)</label>
+    <span class="status loading" id="status">Loading…</span>
+  </div>
+  <section>
+    <h2>Game state</h2>
+    <div id="gameState" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Local player</h2>
+    <div id="localPlayer" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Players</h2>
+    <div id="players" class="empty">—</div>
+  </section>
+  <section>
+    <h2>NPCs</h2>
+    <div id="npcs" class="empty">—</div>
+  </section>
+  <section>
+    <h2>World view</h2>
+    <div id="worldView" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Inventory</h2>
+    <div id="inventory" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Camera</h2>
+    <div id="camera" class="empty">—</div>
+  </section>
+
+  <script>
+    const portEl = document.getElementById('port');
+    const refreshEl = document.getElementById('refresh');
+    const autoEl = document.getElementById('auto');
+    const statusEl = document.getElementById('status');
+
+    function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
+
+    const loadStartTime = Date.now();
+    const LOADING_TIMEOUT_MS = 10000;
+
+    function setStatus(ok, msg) {
+      statusEl.textContent = msg || (ok ? 'OK' : 'Error');
+      statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+    }
+    function setStatusLoading() {
+      statusEl.textContent = 'Loading…';
+      statusEl.className = 'status loading';
+    }
+
+    function renderGameState(d) {
+      const el = document.getElementById('gameState');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<strong>' + (d.gameState || '—') + '</strong>';
+    }
+
+    function renderLocalPlayer(d) {
+      const el = document.getElementById('localPlayer');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const p = d.localPlayer;
+      if (!p || p.error) { el.textContent = p?.error || 'Not in game'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid"><div class="card"><strong>Name</strong><br>' + (p.name ?? '—') + '</div>' +
+        '<div class="card"><strong>Position</strong><br>' + [p.worldX, p.worldY, p.plane].filter(Boolean).join(', ') + '</div>' +
+        '<div class="card"><strong>Animation</strong><br>' + (p.animation ?? '—') + '</div></div>';
+    }
+
+    function renderList(id, arr, keys) {
+      const el = document.getElementById(id);
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid">' + arr.slice(0, 50).map(x => {
+        const parts = (keys || ['name', 'worldX', 'worldY', 'npcId']).map(k => (x[k] != null ? k + ': ' + x[k] : '')).filter(Boolean);
+        return '<div class="card">' + (parts.join('<br>') || JSON.stringify(x)) + '</div>';
+      }).join('') + '</div>' + (arr.length > 50 ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing 50)</p>' : '');
+    }
+
+    function renderNpcs(d) {
+      const el = document.getElementById('npcs');
+      const arr = d?.npcs;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid">' + arr.slice(0, 50).map(x => {
+        const idPart = x.npcId != null ? (x.name ? x.npcId + ' (' + x.name + ')' : 'npcId: ' + x.npcId) : (x.name || '—');
+        const loc = [x.worldX, x.worldY, x.plane].filter(v => v != null).length ? [x.worldX, x.worldY, x.plane].join(', ') : '';
+        return '<div class="card"><strong>' + idPart + '</strong>' + (loc ? '<br><span style="color:#94a3b8;font-size:11px">' + loc + '</span>' : '') + '</div>';
+      }).join('') + '</div>' + (arr.length > 50 ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing 50)</p>' : '');
+    }
+
+    function renderWorldView(d) {
+      const el = document.getElementById('worldView');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const w = d.worldView;
+      if (!w) { el.textContent = '—'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="card"><strong>Base</strong> ' + [w.baseX, w.baseY].join(', ') + ' &nbsp; <strong>Plane</strong> ' + (w.plane ?? '—') + '</div>';
+    }
+
+    function renderInventory(d) {
+      const el = document.getElementById('inventory');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const inv = d.inventory;
+      if (!inv || !Array.isArray(inv)) { el.textContent = '—'; el.className = 'empty'; return; }
+      const filled = inv.filter(x => x && (x.id > 0 || x.quantity > 0));
+      if (filled.length === 0) { el.textContent = 'Empty'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid">' + filled.map(x => {
+        const slot = x.slot != null ? 'Slot ' + x.slot + ': ' : '';
+        const namePart = x.name ? x.id + ' (' + x.name + ')' : x.id;
+        return '<div class="card"><strong>' + slot + namePart + '</strong> × ' + (x.quantity ?? 0) + '</div>';
+      }).join('') + '</div>';
+    }
+
+    function renderCamera(d) {
+      const el = document.getElementById('camera');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const c = d.camera;
+      if (!c || c.error) { el.textContent = c?.error || '—'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="card">x: ' + c.x + ' y: ' + c.y + ' z: ' + c.z + '<br>pitch: ' + c.pitch + ' yaw: ' + c.yaw + '</div>';
+    }
+
+    async function fetchState() {
+      try {
+        const r = await fetch(base() + '/game/state');
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const data = await r.json();
+        setStatus(true);
+        renderGameState(data);
+        renderLocalPlayer(data);
+        renderList('players', data.players, ['name', 'worldX', 'worldY', 'combatLevel']);
+        renderNpcs(data);
+        renderWorldView(data);
+        renderInventory(data);
+        renderCamera(data);
+      } catch (e) {
+        if (Date.now() - loadStartTime < LOADING_TIMEOUT_MS) {
+          setStatusLoading();
+          return;
+        }
+        setStatus(false, e.message || 'Failed to connect');
+        document.getElementById('gameState').innerHTML = '<span class="empty">—</span><p style="margin-top:10px;font-size:12px;color:#94a3b8;max-width:480px"><strong>Failed to connect?</strong><br>1) Start RuneLite with <strong>MiddleMan\\launcher\\launch.bat</strong> (not the normal RuneLite shortcut).<br>2) Open <strong>MiddleMan\middleman.log</strong> to see agent status (e.g. “API listening” = ready).</p>';
+        document.getElementById('localPlayer').textContent = '—';
+        document.getElementById('players').textContent = '—';
+        document.getElementById('npcs').textContent = '—';
+        document.getElementById('worldView').textContent = '—';
+        document.getElementById('inventory').textContent = '—';
+        document.getElementById('camera').textContent = '—';
+        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
+      }
+    }
+
+    refreshEl.addEventListener('click', fetchState);
+    autoEl.addEventListener('change', function () {
+      if (autoEl.checked) {
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      } else {
+        if (window._mid) clearInterval(window._mid);
+      }
+    });
+
+    fetchState();
+    if (autoEl.checked) {
+      window._mid = setInterval(fetchState, 50);
+    }
+  </script>
+</body>
+</html>
