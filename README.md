@@ -1,3 +1,5 @@
+ADAM
+
 # MiddleMan: RuneLite Game State Bridge
 
 MiddleMan exposes game state from a running RuneLite client (game state, entities, inventory, camera, etc.) over HTTP **without recompiling RuneLite** and **without changing any files** in the main project. It runs as a Java agent inside the RuneLite JVM and serves JSON over a local port.
