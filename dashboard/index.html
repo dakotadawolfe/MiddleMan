@@ -158,7 +158,7 @@
       if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
       el.className = '';
       el.innerHTML = '<div class="grid">' + arr.slice(0, 50).map(x => {
-        const idPart = x.npcId != null ? (x.name ? x.npcId + ' (' + x.name + ')' : 'npcId: ' + x.npcId) : (x.name || '—');
+        const idPart = x.npcId != null ? (x.name ? x.npcId + ' – ' + x.name : 'ID: ' + x.npcId) : (x.name || '—');
         const loc = [x.worldX, x.worldY, x.plane].filter(v => v != null).length ? [x.worldX, x.worldY, x.plane].join(', ') : '';
         return '<div class="card"><strong>' + idPart + '</strong>' + (loc ? '<br><span style="color:#94a3b8;font-size:11px">' + loc + '</span>' : '') + '</div>';
       }).join('') + '</div>' + (arr.length > 50 ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing 50)</p>' : '');

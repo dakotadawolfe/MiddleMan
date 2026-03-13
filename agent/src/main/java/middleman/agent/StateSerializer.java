@@ -207,8 +207,28 @@ final class StateSerializer {
     private void appendNpcFields(StringBuilder sb, Object npc) {
         try {
             Method getId = npc.getClass().getMethod("getId");
-            Object id = getId.invoke(npc);
-            if (id != null) sb.append(",\"npcId\":").append(jsonNumber(id));
+            Object idObj = getId.invoke(npc);
+            if (idObj != null) {
+                int id = ((Number) idObj).intValue();
+                sb.append(",\"npcId\":").append(id);
+                // Resolve NPC name from client's composition (getNpcDefinition / getComposition)
+                try {
+                    Method getDef = client.getClass().getMethod("getNpcDefinition", int.class);
+                    Object comp = getDef.invoke(client, id);
+                    if (comp != null) {
+                        Method getName = comp.getClass().getMethod("getName");
+                        Object name = getName.invoke(comp);
+                        if (name != null) {
+                            String nameStr = String.valueOf(name).trim();
+                            if (!nameStr.isEmpty()) {
+                                sb.append(",\"name\":\"").append(escape(nameStr)).append("\"");
+                            }
+                        }
+                    }
+                } catch (Exception ignored) {
+                    // Client may use different method names; npcId is still present
+                }
+            }
         } catch (Exception ignored) {
         }
     }
