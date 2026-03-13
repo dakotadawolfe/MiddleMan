@@ -76,3 +76,9 @@
 2026-03-13 17:53:52 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
 2026-03-13 17:53:56 [MiddleMan] Client found, starting HTTP server.
 2026-03-13 17:53:56 [MiddleMan] Game state API listening on http://127.0.0.1:8765
+2026-03-13 18:06:35 [MiddleMan] Log file: C:\Users\Dakota\Documents\Cursor Projects\RuneLite\MiddleMan\middleman.log
+2026-03-13 18:06:35 [MiddleMan] Agent thread started.
+2026-03-13 18:06:35 [MiddleMan] Waiting for RuneLite Client (port 8765)...
+2026-03-13 18:06:35 [MiddleMan] Discovery waiting (will retry): ClassNotFoundException - net.runelite.client.RuneLite
+2026-03-13 18:06:39 [MiddleMan] Client found, starting HTTP server.
+2026-03-13 18:06:39 [MiddleMan] Game state API listening on http://127.0.0.1:8765
