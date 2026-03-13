@@ -43,7 +43,7 @@ From the **RuneLite project root**:
 cd MiddleMan
 build-exe.bat
 ```
-This creates `MiddleMan.exe` in the MiddleMan folder. Run it from that folder. It runs the full launcher (same as `launch.bat`): RuneLite starts with the MiddleMan agent and the dashboard opens. No extra windows; requires .NET Framework (standard on Windows). On another PC, copy the whole **MiddleMan** folder (exe, `launcher\`, `agent\`, `dashboard\`) next to the RuneLite files (`config.json`, `jre\`, etc.) and run `MiddleMan.exe`.
+This creates `MiddleMan.exe` in the MiddleMan folder. Run it from that folder. It runs the full launcher (same as `launch.bat`): RuneLite starts with the MiddleMan agent and the dashboard opens. To **only open the dashboard** when RuneLite is already running with the agent (e.g. after closing the browser), run `MiddleMan.exe -d` or `MiddleMan.exe --dashboard-only`. No extra windows; requires .NET Framework (standard on Windows). On another PC, copy the whole **MiddleMan** folder (exe, `launcher\`, `agent\`, `dashboard\`) next to the RuneLite files (`config.json`, `jre\`, etc.) and run `MiddleMan.exe`.
 
 **Python 3:**
 ```bash
@@ -54,9 +54,9 @@ RuneLite will start as usual. The launcher passes `--launch-mode=REFLECT` so the
 
 ```
 [MiddleMan] Agent thread started.
-[MiddleMan] Waiting for RuneLite Client (port 8765)...
+[MiddleMan] Waiting for RuneLite Client (port 8766)...
 [MiddleMan] Client found, starting HTTP server.
-[MiddleMan] Game state API listening on http://127.0.0.1:8765
+[MiddleMan] Game state API listening on http://127.0.0.1:8766
 ```
 
 **Log file:** The same messages are written to **`MiddleMan/middleman.log`**. If the console is flooded with RuneLite DEBUG output, open that file to see whether the agent started and the API is listening.
@@ -71,9 +71,22 @@ With RuneLite running via the MiddleMan launcher, open the dashboard in your bro
 
 The dashboard shows live **game state**, **local player**, **players**, **NPCs**, **world view**, **inventory**, and **camera**. Use **Refresh** to poll once, or check **Auto (2s)** to update every 2 seconds. Change the port if you use `MIDDLEMAN_PORT` or agent args.
 
-### 4. Call the API from your app
+### 4. Change the API without restarting RuneLite
 
-Base URL: **http://127.0.0.1:8765** (configurable, see below).
+The agent runs inside RuneLite, so changing the agent JAR means restarting the game. To change **your** API (custom endpoints, response shape, etc.) without restarting RuneLite:
+
+1. **API proxy** – Run the Node proxy so clients talk to it instead of the agent:
+   ```bash
+   cd MiddleMan
+   node api-server.js
+   ```
+   It listens on **8765** and forwards to the agent on **8766**. Edit **`api-server.js`** to add routes or transform responses; when you save, **restart the Node process** (Ctrl+C, then `node api-server.js` again). RuneLite can keep running. Point the dashboard port to **8765** when using the proxy.
+
+2. **Direct** – The agent listens on **8766**. The dashboard defaults to 8766 so it works without the proxy. Use 8766 when you don’t need to customize the API.
+
+### 5. Call the API from your app
+
+Base URL: **http://127.0.0.1:8766** (agent) or **http://127.0.0.1:8765** (proxy, if running). Dashboard port input is configurable.
 
 | Endpoint | Description |
 |----------|-------------|
@@ -88,7 +101,7 @@ All responses are **JSON** with `Content-Type: application/json` and `Access-Con
 #### Example: full state
 
 ```bash
-curl http://127.0.0.1:8765/game/state
+curl http://127.0.0.1:8766/game/state
 ```
 
 Example shape (fields may be null if not in game):
@@ -108,7 +121,7 @@ Example shape (fields may be null if not in game):
 #### Example: simple game state
 
 ```bash
-curl http://127.0.0.1:8765/game/state/simple
+curl http://127.0.0.1:8766/game/state/simple
 ```
 
 ```json
@@ -117,9 +130,8 @@ curl http://127.0.0.1:8765/game/state/simple
 
 ## Configuration
 
-- **Port** – Default is `8765`. Override with environment variable:
-  - `MIDDLEMAN_PORT=9999` (then start the client via the launcher as above).
-- **Agent JAR args** – If you start the JVM manually, you can pass the port as the agent argument: `-javaagent:MiddleManAgent.jar=9999`.
+- **Agent port** – Default is **8766** (set by the launcher). Override with env `MIDDLEMAN_PORT=9999` or agent arg: `-javaagent:MiddleManAgent.jar=9999`.
+- **API proxy** – Optional. Run `node api-server.js` to listen on **8765** and forward to the agent. Edit `api-server.js` and restart the Node process to change the API without restarting RuneLite.
 
 ## Requirements
 

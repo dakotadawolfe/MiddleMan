@@ -28,7 +28,7 @@ if (-not (Test-Path $AgentJar)) {
     Write-Error "Agent JAR not found. Build first: cd MiddleMan\agent; .\build.ps1"
     exit 1
 }
-$VmArgs += "-javaagent:$AgentJar"
+$VmArgs += "-javaagent:${AgentJar}=8766"
 
 $JreBin = Join-Path $Root "jre\bin\java.exe"
 if (-not (Test-Path $JreBin)) {

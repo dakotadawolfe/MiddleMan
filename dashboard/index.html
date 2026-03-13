@@ -68,7 +68,7 @@
 <body>
   <h1>MiddleMan – Game State</h1>
   <div class="toolbar">
-    <label>Port: <input type="number" id="port" value="8765" min="1" max="65535"></label>
+    <label>Port: <input type="number" id="port" value="8766" min="1" max="65535"></label>
     <button id="refresh">Refresh</button>
     <label><input type="checkbox" id="auto" checked> Auto (every tick)</label>
     <span class="status loading" id="status">Loading…</span>
@@ -108,7 +108,7 @@
     const autoEl = document.getElementById('auto');
     const statusEl = document.getElementById('status');
 
-    function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
+    function base() { return 'http://127.0.0.1:' + (portEl.value || '8766'); }
 
     const loadStartTime = Date.now();
     const LOADING_TIMEOUT_MS = 10000;
