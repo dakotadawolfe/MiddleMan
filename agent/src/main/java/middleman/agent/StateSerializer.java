@@ -2,6 +2,11 @@ package middleman.agent;
 
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.Paths;
+import java.nio.file.StandardOpenOption;
 import java.util.Iterator;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
@@ -205,33 +210,70 @@ final class StateSerializer {
     }
 
     private void appendNpcFields(StringBuilder sb, Object npc) {
+        // #region agent log
+        final String logPath = "debug-accdc0.log";
+        // #endregion
         try {
             Method getId = npc.getClass().getMethod("getId");
             Object idObj = getId.invoke(npc);
             if (idObj != null) {
                 int id = ((Number) idObj).intValue();
                 sb.append(",\"npcId\":").append(id);
+                // #region agent log
+                debugLog(logPath, "A", "appendNpcFields entry", "npcId", id);
+                // #endregion
                 // Resolve NPC name from client's composition (getNpcDefinition / getComposition)
                 try {
                     Method getDef = client.getClass().getMethod("getNpcDefinition", int.class);
                     Object comp = getDef.invoke(client, id);
+                    // #region agent log
+                    debugLog(logPath, "B", "getNpcDefinition result", "compNull", comp == null, "compClass", comp != null ? comp.getClass().getName() : "null");
+                    // #endregion
                     if (comp != null) {
                         Method getName = comp.getClass().getMethod("getName");
                         Object name = getName.invoke(comp);
+                        // #region agent log
+                        debugLog(logPath, "C", "getName result", "name", name != null ? String.valueOf(name) : "null");
+                        // #endregion
                         if (name != null) {
                             String nameStr = String.valueOf(name).trim();
                             if (!nameStr.isEmpty()) {
                                 sb.append(",\"name\":\"").append(escape(nameStr)).append("\"");
+                                // #region agent log
+                                debugLog(logPath, "D", "appended name to JSON", "nameStr", nameStr);
+                                // #endregion
                             }
                         }
                     }
-                } catch (Exception ignored) {
+                } catch (Exception e) {
+                    // #region agent log
+                    debugLog(logPath, "E", "getNpcDefinition/getName failed", "error", e.getClass().getSimpleName() + ": " + (e.getMessage() != null ? e.getMessage() : ""));
+                    // #endregion
                     // Client may use different method names; npcId is still present
                 }
             }
         } catch (Exception ignored) {
         }
     }
+
+    // #region agent log
+    private static void debugLog(String logPath, String hypothesisId, String message, Object... keyValues) {
+        try {
+            StringBuilder data = new StringBuilder("{");
+            for (int i = 0; i < keyValues.length; i += 2) {
+                if (i > 0) data.append(",");
+                String k = String.valueOf(keyValues[i]);
+                Object v = i + 1 < keyValues.length ? keyValues[i + 1] : "";
+                data.append("\"").append(escape(k)).append("\":\"").append(escape(String.valueOf(v))).append("\"");
+            }
+            data.append("}");
+            String line = "{\"sessionId\":\"accdc0\",\"hypothesisId\":\"" + hypothesisId + "\",\"location\":\"StateSerializer.appendNpcFields\",\"message\":\"" + escape(message) + "\",\"data\":" + data.toString() + ",\"timestamp\":" + System.currentTimeMillis() + "}\n";
+            Path p = Paths.get(logPath);
+            Files.write(p, line.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
+        } catch (Throwable ignored) {
+        }
+    }
+    // #endregion
 
     private void appendWorldView(StringBuilder sb) {
         try {
