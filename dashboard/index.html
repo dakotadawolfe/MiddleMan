@@ -230,7 +230,14 @@
           actionsHtml + '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
       el.querySelectorAll('.world-object-card').forEach(card => {
-        card.addEventListener('click', () => card.classList.toggle('expanded'));
+        card.addEventListener('click', () => {
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            if (window._mid) { clearInterval(window._mid); window._mid = null; }
+          } else if (autoEl.checked) {
+            window._mid = setInterval(fetchState, 50);
+          }
+        });
       });
     }
     function escapeHtml(s) {
