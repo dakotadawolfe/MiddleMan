@@ -401,17 +401,6 @@ final class StateSerializer {
                 String s = String.valueOf(name).trim();
                 if (!s.isEmpty()) return s;
             }
-            try {
-                Method getImpostor = comp.getClass().getMethod("getImpostor");
-                Object impostor = getImpostor.invoke(comp);
-                if (impostor != null) {
-                    name = getName.invoke(impostor);
-                    if (name != null) {
-                        String s = String.valueOf(name).trim();
-                        if (!s.isEmpty()) return s;
-                    }
-                }
-            } catch (NoSuchMethodException ignored) { }
             return "";
         } catch (Exception e) {
             return "";
