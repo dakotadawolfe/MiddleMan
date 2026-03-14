@@ -350,24 +350,16 @@ final class StateSerializer {
         } catch (Exception ignored) { }
     }
 
-    /** Known null/placeholder object IDs to omit from the list (e.g. 20737 = NULL_20737). */
-    private static final int[] SKIP_OBJECT_IDS = { 0, 20737 };
-
-    private static boolean shouldSkipObjectId(int id) {
-        for (int skip : SKIP_OBJECT_IDS) if (id == skip) return true;
-        return false;
-    }
-
-    /** Returns true if object was appended, false if skipped (e.g. null placeholder id). */
+    /** Returns true if object was appended, false if skipped (no name = not included). */
     private boolean appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client, boolean[] first) {
         try {
             Method getId = tileObj.getClass().getMethod("getId");
             Object idObj = getId.invoke(tileObj);
             int id = idObj != null ? ((Number) idObj).intValue() : -1;
-            if (shouldSkipObjectId(id)) return false;
+            String name = resolveObjectName(client, id);
+            if (name == null || name.isEmpty()) return false;
             if (!first[0]) out.append(",");
             first[0] = false;
-            String name = resolveObjectName(client, id);
             Method getWorldLoc = tileObj.getClass().getMethod("getWorldLocation");
             Object loc = getWorldLoc.invoke(tileObj);
             int wx = 0, wy = 0, plane = 0;
@@ -377,7 +369,7 @@ final class StateSerializer {
                 plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
             }
             out.append("{\"type\":\"").append(escape(type)).append("\",\"id\":").append(id);
-            if (name != null && !name.isEmpty()) out.append(",\"name\":\"").append(escape(name)).append("\"");
+            out.append(",\"name\":\"").append(escape(name)).append("\"");
             out.append(",\"worldX\":").append(wx).append(",\"worldY\":").append(wy).append(",\"plane\":").append(plane);
             out.append("}");
             return true;
