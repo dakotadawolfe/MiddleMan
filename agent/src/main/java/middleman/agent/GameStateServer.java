@@ -16,10 +16,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 
-// #region agent log
-import java.nio.file.StandardOpenOption;
-// #endregion
-
 /**
  * HTTP server exposing game state as JSON. Uses JDK built-in HttpServer.
  */
@@ -39,42 +35,21 @@ final class GameStateServer {
     }
 
     void start() throws IOException {
-        // #region agent log
-        debugLog("start_enter", "agentVersion", StateSerializer.getAgentVersion());
-        debugLog("class_source_middleman", "url", classSource(MiddleManAgent.class));
-        debugLog("class_source_stateserializer", "url", classSource(StateSerializer.class));
-        debugLog("class_loader_middleman", "id", String.valueOf(System.identityHashCode(MiddleManAgent.class.getClassLoader())));
-        // #endregion
         for (int attempt = 0; attempt < 2; attempt++) {
             try {
                 server = HttpServer.create(new InetSocketAddress("127.0.0.1", port), 2);
-                // #region agent log
-                debugLog("bind_ok", "attempt", attempt);
-                // #endregion
                 break;
             } catch (BindException e) {
-                // #region agent log
-                debugLog("bind_failed", "attempt", attempt);
-                // #endregion
                 if (attempt == 0) {
                     AgentLog.log("Port " + port + " in use; asking previous agent to shut down so this instance can take over.");
                     boolean shutdownOk = requestShutdown(port);
-                    // #region agent log
-                    debugLog("requestShutdown_result", "ok", shutdownOk);
-                    // #endregion
                     if (!shutdownOk) {
                         AgentLog.log("Could not reach previous agent. Dashboard will use existing server.");
-                        // #region agent log
-                        debugLog("start_aborted", "reason", "requestShutdown_failed");
-                        // #endregion
                         return;
                     }
                     try { Thread.sleep(800); } catch (InterruptedException ie) { Thread.currentThread().interrupt(); return; }
                 } else {
                     AgentLog.log("Port still in use after shutdown request. Dashboard will use existing server.");
-                    // #region agent log
-                    debugLog("start_aborted", "reason", "port_still_in_use");
-                    // #endregion
                     return;
                 }
             }
@@ -99,44 +74,11 @@ final class GameStateServer {
             c.setReadTimeout(2000);
             int code = c.getResponseCode();
             c.disconnect();
-            // #region agent log
-            debugLog("requestShutdown_response", "code", code);
-            // #endregion
             return code == 200;
         } catch (Exception e) {
-            // #region agent log
-            debugLog("requestShutdown_error", "message", e.getMessage());
-            // #endregion
             return false;
         }
     }
-
-    // #region agent log
-    private static void debugLog(String message, String key, Object value) {
-        try {
-            Path logPath = Paths.get(System.getProperty("user.dir", "."), "MiddleMan", "debug-01c49b.log");
-            String val = value instanceof Number || value instanceof Boolean ? String.valueOf(value) : "\"" + escapeJson(String.valueOf(value)) + "\"";
-            String line = "{\"sessionId\":\"01c49b\",\"message\":\"" + escapeJson(message) + "\",\"data\":{\"" + escapeJson(key) + "\":" + val + "},\"timestamp\":" + System.currentTimeMillis() + "}\n";
-            Files.write(logPath, line.getBytes(StandardCharsets.UTF_8), StandardOpenOption.CREATE, StandardOpenOption.APPEND);
-        } catch (Throwable ignored) { }
-    }
-    private static String escapeJson(String s) {
-        if (s == null) return "";
-        return s.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n");
-    }
-
-    private static String classSource(Class<?> c) {
-        try {
-            if (c == null || c.getProtectionDomain() == null || c.getProtectionDomain().getCodeSource() == null
-                || c.getProtectionDomain().getCodeSource().getLocation() == null) {
-                return "unknown";
-            }
-            return String.valueOf(c.getProtectionDomain().getCodeSource().getLocation());
-        } catch (Throwable ignored) {
-            return "unknown";
-        }
-    }
-    // #endregion
 
     private void handleShutdown(HttpExchange exchange) throws IOException {
         send(exchange, 200, "{\"ok\":true}");

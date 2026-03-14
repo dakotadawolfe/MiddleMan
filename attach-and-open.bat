@@ -3,6 +3,13 @@ cd /d "%~dp0\.."
 setlocal enabledelayedexpansion
 set "AGENT_DIR=%~dp0agent"
 set "BUILD_DIR=%AGENT_DIR%\build"
+if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
+
+echo Pruning old unlocked agent JARs...
+for %%f in ("%BUILD_DIR%\MiddleManAgent-*.jar") do (
+    del /q "%%~f" >nul 2>nul
+)
+
 echo [1/3] Building agent (unique JAR per run so in-use JARs are never overwritten)...
 cd /d "%AGENT_DIR%"
 set DTS=00000000000000
@@ -37,8 +44,7 @@ if not defined PID for /f "tokens=1" %%a in ('wmic process where "name='java.exe
 if defined PID (
     echo Attaching to RuneLite PID !PID!...
     if not exist "!JAVA_EXE!" set "JAVA_EXE=java"
-    set "DEBUGLOG=%~dp0debug-01c49b.log"
-    "!JAVA_EXE!" --add-modules jdk.attach -cp "!JAR!" middleman.agent.AttachMain !PID! "!JAR!" "!DEBUGLOG!" "!JAR_VER!"
+    "!JAVA_EXE!" --add-modules jdk.attach -cp "!JAR!" middleman.agent.AttachMain !PID! "!JAR!" "!JAR_VER!"
     if errorlevel 1 (
         echo Attach failed. Need a JDK with jdk.attach: set JAVA_HOME to your JDK and try again.
         echo Check MiddleMan\middleman.log to see if the agent started.
@@ -48,6 +54,16 @@ if defined PID (
 ) else (
     echo RuneLite not running. Start it with: MiddleMan\launcher\launch-attachable.bat
     echo Then run this batch again to attach.
+)
+
+if defined PID (
+    echo Pruning old unlocked agent JARs (keeping latest)...
+    for %%f in ("%BUILD_DIR%\MiddleManAgent-*.jar") do (
+        if /I not "%%~nxf"=="!JARNAME!" del /q "%%~f" >nul 2>nul
+    )
+) else (
+    echo RuneLite closed; pruning generated agent JARs...
+    del /q "%BUILD_DIR%\MiddleManAgent-*.jar" >nul 2>nul
 )
 
 echo [3/3] Opening dashboard...
