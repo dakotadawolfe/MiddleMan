@@ -95,8 +95,12 @@
     <div id="gameState" class="empty">—</div>
   </section>
   <section>
-    <h2>Local player</h2>
+    <h2>Player</h2>
     <div id="localPlayer" class="empty">—</div>
+    <h3 style="margin:12px 0 6px 0;font-size:0.85rem;color:#94a3b8">Equipped</h3>
+    <div id="equipment" class="empty">—</div>
+    <h3 style="margin:12px 0 6px 0;font-size:0.85rem;color:#94a3b8">Inventory</h3>
+    <div id="inventory" class="empty">—</div>
   </section>
   <section>
     <h2>Players</h2>
@@ -117,10 +121,6 @@
   <section>
     <h2>World view</h2>
     <div id="worldView" class="empty">—</div>
-  </section>
-  <section>
-    <h2>Inventory</h2>
-    <div id="inventory" class="empty">—</div>
   </section>
   <section>
     <h2>Camera</h2>
@@ -169,9 +169,35 @@
       const p = d.localPlayer;
       if (!p || p.error) { el.textContent = p?.error || 'Not in game'; el.className = 'empty'; return; }
       el.className = '';
+      const s = d.playerStats || {};
+      const hpStr = (s.hitpoints != null && s.maxHitpoints != null) ? (s.hitpoints + ' / ' + s.maxHitpoints) : (s.hitpoints != null ? s.hitpoints : '—');
+      const prayStr = (s.prayerPoints != null && s.maxPrayer != null) ? (s.prayerPoints + ' / ' + s.maxPrayer) : (s.prayerPoints != null ? s.prayerPoints : '—');
+      const runStr = (s.runEnergy != null) ? (s.runEnergy + '%') : '—';
+      const statsCards = '<div class="card"><strong>Hitpoints</strong><br>' + hpStr + '</div>' +
+        '<div class="card"><strong>Prayer</strong><br>' + prayStr + '</div>' +
+        '<div class="card"><strong>Run energy</strong><br>' + runStr + '</div>';
       el.innerHTML = '<div class="grid"><div class="card"><strong>Name</strong><br>' + (p.name ?? '—') + '</div>' +
         '<div class="card"><strong>Position</strong><br>' + [p.worldX, p.worldY, p.plane].filter(Boolean).join(', ') + '</div>' +
-        '<div class="card"><strong>Animation</strong><br>' + (p.animation ?? '—') + '</div></div>';
+        '<div class="card"><strong>Animation</strong><br>' + (p.animation ?? '—') + '</div>' +
+        statsCards + '</div>';
+    }
+
+    function renderEquipment(d) {
+      const el = document.getElementById('equipment');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const arr = d.equipment;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      el.className = '';
+      const slotLabels = { HEAD: 'Head', CAPE: 'Cape', AMULET: 'Amulet', WEAPON: 'Weapon', BODY: 'Body', SHIELD: 'Shield', ARMS: 'Arms', LEGS: 'Legs', HAIR: 'Hair', GLOVES: 'Gloves', BOOTS: 'Boots', JAW: 'Jaw', RING: 'Ring', AMMO: 'Ammo' };
+      el.innerHTML = '<div class="grid">' + arr.map(x => {
+        const label = slotLabels[x.slot] || x.slot || ('Slot ' + (x.slotIndex ?? ''));
+        const hasItem = x.id != null && x.id > 0;
+        const namePart = hasItem ? (x.name ? x.id + ' (' + escapeHtml(x.name) + ')' : x.id) : '—';
+        const qty = hasItem && x.quantity > 1 ? ' × ' + x.quantity : '';
+        const iconUrl = hasItem ? (base() + '/game/sprite/item/' + x.id) : '';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        return '<div class="card card-with-icon">' + iconImg + '<div><strong style="color:#64748b;font-size:11px">' + label + '</strong><br>' + namePart + qty + '</div></div>';
+      }).join('') + '</div>';
     }
 
     function renderList(id, arr, keys) {
@@ -383,6 +409,7 @@
         if (vEl) vEl.textContent = data.agentVersion ? ' (agent ' + data.agentVersion + ')' : ' (agent version unknown — run MiddleMan\\attach-and-open.bat to rebuild & attach; if it still shows unknown, restart RuneLite once then run the bat again)';
         renderGameState(data);
         renderLocalPlayer(data);
+        renderEquipment(data);
         renderList('players', data.players, ['name', 'worldX', 'worldY', 'combatLevel']);
         renderNpcs(data);
         renderWorldObjects(data);
@@ -398,6 +425,7 @@
         setStatus(false, e.message || 'Failed to connect');
         document.getElementById('gameState').innerHTML = '<span class="empty">—</span><p style="margin-top:10px;font-size:12px;color:#94a3b8;max-width:480px"><strong>Failed to connect?</strong><br>1) Run <strong>MiddleMan.exe</strong> or start RuneLite with <strong>MiddleMan\\launcher\\launch.bat</strong> (not the normal RuneLite shortcut).<br>2) Or run <strong>MiddleMan.exe</strong> to start RuneLite with the agent.<br>3) Open <strong>MiddleMan\middleman.log</strong> to see agent status (e.g. “API listening” = ready).</p>';
         document.getElementById('localPlayer').textContent = '—';
+        document.getElementById('equipment').textContent = '—';
         document.getElementById('players').textContent = '—';
         document.getElementById('npcs').textContent = '—';
         document.getElementById('worldObjects').textContent = '—';
@@ -405,7 +433,7 @@
         document.getElementById('worldView').textContent = '—';
         document.getElementById('inventory').textContent = '—';
         document.getElementById('camera').textContent = '—';
-        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldObjects, #groundItems, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
+        [].forEach.call(document.querySelectorAll('#localPlayer, #equipment, #players, #npcs, #worldObjects, #groundItems, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
       }
     }
 

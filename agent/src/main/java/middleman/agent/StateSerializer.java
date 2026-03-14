@@ -70,6 +70,49 @@ final class StateSerializer {
         REGION_NAMES.put(14388, "Darkmeyer"); REGION_NAMES.put(14644, "Darkmeyer");
         REGION_NAMES.put(12076, "Tempoross");
         REGION_NAMES.put(12700, "Ferox Enclave");
+        REGION_NAMES.put(12590, "Bandit Camp");
+        REGION_NAMES.put(10039, "Barbarian Outpost");
+        REGION_NAMES.put(12598, "Grand Exchange"); REGION_NAMES.put(13104, "Grand Exchange");
+        REGION_NAMES.put(12851, "Lumbridge Swamp");
+        REGION_NAMES.put(12340, "Draynor Manor");
+        REGION_NAMES.put(12083, "Falador Farm");
+        REGION_NAMES.put(11571, "Crafting Guild");
+        REGION_NAMES.put(13365, "Digsite");
+        REGION_NAMES.put(13613, "Nardah");
+        REGION_NAMES.put(13358, "Pollnivneach");
+        REGION_NAMES.put(10545, "Port Khazard");
+        REGION_NAMES.put(10044, "Miscellania");
+        REGION_NAMES.put(11310, "Shilo Village");
+        REGION_NAMES.put(11056, "Tai Bwo Wannai"); REGION_NAMES.put(11055, "Tai Bwo Wannai");
+        REGION_NAMES.put(9035, "Chaos Temple");
+        REGION_NAMES.put(12619, "Drill Sergeant's Camp");
+        REGION_NAMES.put(13107, "Al Kharid Mine");
+        REGION_NAMES.put(12105, "Agility Pyramid"); REGION_NAMES.put(13356, "Agility Pyramid");
+        REGION_NAMES.put(11562, "Crash Island");
+        REGION_NAMES.put(11314, "Crandor"); REGION_NAMES.put(11315, "Crandor");
+        REGION_NAMES.put(11825, "Asgarnia"); REGION_NAMES.put(11829, "Asgarnia"); REGION_NAMES.put(11830, "Asgarnia"); REGION_NAMES.put(12085, "Asgarnia"); REGION_NAMES.put(12086, "Asgarnia");
+        REGION_NAMES.put(9773, "Feldip Hills"); REGION_NAMES.put(9774, "Feldip Hills"); REGION_NAMES.put(10029, "Feldip Hills"); REGION_NAMES.put(10030, "Feldip Hills");
+        REGION_NAMES.put(10285, "Feldip Hills"); REGION_NAMES.put(10286, "Feldip Hills"); REGION_NAMES.put(10287, "Feldip Hills"); REGION_NAMES.put(10542, "Feldip Hills"); REGION_NAMES.put(10543, "Feldip Hills");
+        REGION_NAMES.put(4922, "Farming Guild");
+        REGION_NAMES.put(10569, "Fisher Realm");
+        REGION_NAMES.put(12621, "Clan Wars"); REGION_NAMES.put(12622, "Clan Wars"); REGION_NAMES.put(12623, "Clan Wars");
+        REGION_NAMES.put(14131, "Barrows"); REGION_NAMES.put(14231, "Barrows");
+        REGION_NAMES.put(7508, "Barbarian Assault"); REGION_NAMES.put(7509, "Barbarian Assault"); REGION_NAMES.put(10322, "Barbarian Assault");
+        REGION_NAMES.put(9520, "Castle Wars"); REGION_NAMES.put(9620, "Castle Wars");
+        REGION_NAMES.put(9033, "Nightmare Zone");
+        REGION_NAMES.put(10536, "Pest Control");
+        REGION_NAMES.put(12889, "Chambers of Xeric"); REGION_NAMES.put(13136, "Chambers of Xeric"); REGION_NAMES.put(13137, "Chambers of Xeric");
+        REGION_NAMES.put(12611, "Theatre of Blood"); REGION_NAMES.put(12612, "Theatre of Blood"); REGION_NAMES.put(12613, "Theatre of Blood");
+        REGION_NAMES.put(9043, "The Inferno");
+        REGION_NAMES.put(12127, "The Gauntlet"); REGION_NAMES.put(7512, "The Gauntlet");
+        REGION_NAMES.put(14484, "Guardians of the Rift");
+        REGION_NAMES.put(13491, "Giants' Foundry");
+        REGION_NAMES.put(7222, "Tithe Farm");
+        REGION_NAMES.put(7757, "Blast Furnace");
+        REGION_NAMES.put(12954, "Varrock Sewers"); REGION_NAMES.put(13210, "Varrock Sewers");
+        REGION_NAMES.put(12693, "Lumbridge Swamp Caves"); REGION_NAMES.put(12949, "Lumbridge Swamp Caves");
+        REGION_NAMES.put(12441, "Edgeville Dungeon"); REGION_NAMES.put(12442, "Edgeville Dungeon"); REGION_NAMES.put(12443, "Edgeville Dungeon");
+        REGION_NAMES.put(14679, "Motherlode Mine"); REGION_NAMES.put(14935, "Motherlode Mine"); REGION_NAMES.put(15191, "Motherlode Mine");
     }
 
     private final Object client;
@@ -90,6 +133,7 @@ final class StateSerializer {
         sb.append("{\"agentVersion\":\"").append(escape(getAgentVersion())).append("\",");
         appendGameState(sb);
         appendMapInfo(sb);
+        appendPlayerStats(sb);
         sb.append(",\"localPlayer\":");
         appendLocalPlayer(sb);
         sb.append(",\"players\":");
@@ -102,6 +146,8 @@ final class StateSerializer {
         appendGroundItems(sb);
         sb.append(",\"worldView\":");
         appendWorldView(sb);
+        sb.append(",\"equipment\":");
+        appendEquipment(sb);
         sb.append(",\"inventory\":");
         appendInventory(sb);
         sb.append(",\"camera\":");
@@ -180,6 +226,31 @@ final class StateSerializer {
             }
         } catch (Exception e) {
             sb.append(",\"regionId\":null,\"mapName\":null");
+        }
+    }
+
+    /** Appends ,"playerStats":{"prayerPoints":N,"maxPrayer":N,"hitpoints":N,"maxHitpoints":N,"runEnergy":N}. */
+    private void appendPlayerStats(StringBuilder sb) {
+        try {
+            ClassLoader loader = client.getClass().getClassLoader();
+            Class<?> skillClass = Class.forName("net.runelite.api.Skill", false, loader);
+            Object hitpoints = skillClass.getField("HITPOINTS").get(null);
+            Object prayer = skillClass.getField("PRAYER").get(null);
+            Method getBoosted = client.getClass().getMethod("getBoostedSkillLevel", skillClass);
+            Method getReal = client.getClass().getMethod("getRealSkillLevel", skillClass);
+            Method getEnergy = client.getClass().getMethod("getEnergy");
+            int hp = ((Number) getBoosted.invoke(client, hitpoints)).intValue();
+            int maxHp = ((Number) getReal.invoke(client, hitpoints)).intValue();
+            int pray = ((Number) getBoosted.invoke(client, prayer)).intValue();
+            int maxPray = ((Number) getReal.invoke(client, prayer)).intValue();
+            int energyRaw = ((Number) getEnergy.invoke(client)).intValue();
+            int runEnergy = (energyRaw >= 0 && energyRaw <= 10000) ? (energyRaw / 100) : energyRaw;
+            sb.append(",\"playerStats\":{");
+            sb.append("\"hitpoints\":").append(hp).append(",\"maxHitpoints\":").append(maxHp);
+            sb.append(",\"prayerPoints\":").append(pray).append(",\"maxPrayer\":").append(maxPray);
+            sb.append(",\"runEnergy\":").append(runEnergy).append("}");
+        } catch (Exception e) {
+            sb.append(",\"playerStats\":null");
         }
     }
 
@@ -1028,6 +1099,66 @@ final class StateSerializer {
             sb.append("}");
         } catch (Exception e) {
             sb.append("null");
+        }
+    }
+
+    private void appendEquipment(StringBuilder sb) {
+        if (clientThread != null) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> holder = new AtomicReference<>();
+            Runnable runOnClient = () -> {
+                try {
+                    holder.set(buildEquipmentJson());
+                } finally {
+                    latch.countDown();
+                }
+            };
+            try {
+                clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+                if (latch.await(2, TimeUnit.SECONDS) && holder.get() != null) {
+                    sb.append(holder.get());
+                    return;
+                }
+            } catch (Throwable ignored) { }
+            sb.append("[]");
+            return;
+        }
+        sb.append("[]");
+    }
+
+    /** Must be called on client thread. Returns JSON array of equipment slots with slot name, id, quantity, name. */
+    private String buildEquipmentJson() {
+        try {
+            ClassLoader loader = client.getClass().getClassLoader();
+            Class<?> invIdClass = Class.forName("net.runelite.api.InventoryID", false, loader);
+            Object equipmentId = invIdClass.getField("EQUIPMENT").get(null);
+            Method getContainer = client.getClass().getMethod("getItemContainer", invIdClass);
+            Object container = getContainer.invoke(client, equipmentId);
+            if (container == null) return "[]";
+            Method getItems = container.getClass().getMethod("getItems");
+            Object items = getItems.invoke(container);
+            if (items == null || !items.getClass().isArray()) return "[]";
+            String[] slotNames = {"HEAD", "CAPE", "AMULET", "WEAPON", "BODY", "SHIELD", "ARMS", "LEGS", "HAIR", "GLOVES", "BOOTS", "JAW", "RING", "AMMO"};
+            int len = Math.min(Array.getLength(items), slotNames.length);
+            StringBuilder out = new StringBuilder();
+            out.append("[");
+            for (int i = 0; i < len; i++) {
+                if (i > 0) out.append(",");
+                Object item = Array.get(items, i);
+                String slotName = i < slotNames.length ? slotNames[i] : ("SLOT" + i);
+                if (item == null) {
+                    out.append("{\"slot\":\"").append(escape(slotName)).append("\",\"slotIndex\":").append(i).append(",\"id\":0,\"quantity\":0,\"name\":\"\"}");
+                } else {
+                    int id = (Integer) item.getClass().getMethod("getId").invoke(item);
+                    int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
+                    String name = resolveItemName(id);
+                    out.append("{\"slot\":\"").append(escape(slotName)).append("\",\"slotIndex\":").append(i).append(",\"id\":").append(id).append(",\"quantity\":").append(qty).append(",\"name\":\"").append(escape(name)).append("\"}");
+                }
+            }
+            out.append("]");
+            return out.toString();
+        } catch (Exception e) {
+            return "[]";
         }
     }
 
