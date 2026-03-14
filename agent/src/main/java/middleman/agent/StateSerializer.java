@@ -392,11 +392,55 @@ final class StateSerializer {
                 plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
             }
             double dist = Math.hypot(wx - playerX, wy - playerY);
+            String actionsJson = getObjectActionsJson(client, id);
             String json = "{\"type\":\"" + escape(type) + "\",\"id\":" + id +
                 ",\"name\":\"" + escape(name) + "\"" +
-                ",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + "}";
+                ",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane +
+                ",\"actions\":" + actionsJson + "}";
             collected.add(new Object[]{ Double.valueOf(dist), json });
         } catch (Exception ignored) { }
+    }
+
+    private String getObjectActionsJson(Object client, int objectId) {
+        if (objectId <= 0) return "[]";
+        try {
+            Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
+            if (getDef == null) return "[]";
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, objectId);
+            if (comp == null) return "[]";
+            Object effective = comp;
+            try {
+                Method getImpostorIds = comp.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(comp);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = comp.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(comp);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            int len = Array.getLength(actionsObj);
+            boolean first = true;
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
     }
 
     private boolean isInteractable(Object client, int objectId) {

@@ -66,6 +66,10 @@
     .card strong { color: #94a3b8; }
     pre { margin: 0; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
     .empty { color: #64748b; font-style: italic; }
+    .world-object-card { cursor: pointer; user-select: none; }
+    .world-object-card:hover { outline: 1px solid #475569; }
+    .world-object-card .object-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
+    .world-object-card.expanded .object-actions { display: block; }
   </style>
 </head>
 <body>
@@ -218,8 +222,21 @@
         const idPart = (x.name && x.name !== 'null') ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
         const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
         const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
-        return '<div class="card"><strong>' + type + ': ' + idPart + '</strong>' + (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') + '</div>';
+        const actions = Array.isArray(x.actions) ? x.actions.filter(Boolean) : [];
+        const actionsHtml = actions.length ? '<div class="object-actions"><strong>Actions:</strong> ' + actions.map(a => escapeHtml(String(a))).join(', ') + '</div>' : '';
+        return '<div class="card world-object-card" tabindex="0">' +
+          '<strong>' + type + ': ' + idPart + '</strong>' +
+          (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          actionsHtml + '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.world-object-card').forEach(card => {
+        card.addEventListener('click', () => card.classList.toggle('expanded'));
+      });
+    }
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
     }
 
     async function fetchState() {
