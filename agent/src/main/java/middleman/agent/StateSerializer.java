@@ -733,7 +733,10 @@ final class StateSerializer {
             String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
             menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
         }
-        Class<?> menuActionClass = Class.forName("net.runelite.api.MenuAction");
+        // Load MenuAction from the client's classloader so it matches the Client interface (runelite_src/runelite-api/.../MenuAction.java)
+        ClassLoader clientLoader = client.getClass().getClassLoader();
+        Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
+        @SuppressWarnings({ "unchecked", "rawtypes" })
         Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
         Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
         if (getDef == null) return "No object definition method";
