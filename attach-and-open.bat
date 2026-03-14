@@ -3,7 +3,6 @@ cd /d "%~dp0\.."
 setlocal enabledelayedexpansion
 set "AGENT_DIR=%~dp0agent"
 set "BUILD_DIR=%AGENT_DIR%\build"
-set "DBG=%~dp0..\debug-01c49b.log"
 if not exist "%BUILD_DIR%" mkdir "%BUILD_DIR%"
 
 echo Pruning old unlocked agent JARs...
@@ -14,22 +13,13 @@ for %%f in ("%BUILD_DIR%\MiddleManAgent-*.jar") do (
 echo [1/3] Building agent (unique JAR per run so in-use JARs are never overwritten)...
 cd /d "%AGENT_DIR%"
 set "DTS="
-rem #region agent log
->>"%DBG%" echo {"sessionId":"01c49b","runId":"dtsgen","hypothesisId":"H1,H2","location":"attach-and-open.bat:15","message":"dts_init","data":{"DTS":"!DTS!"},"timestamp":%time:~0,2%%time:~3,2%%time:~6,2%%time:~9,2%}
-rem #endregion
 for /f "skip=1 tokens=1" %%a in ('wmic os get localdatetime 2^>nul') do if not defined DTS set "DTS=%%a"
 if not defined DTS for /f "delims=" %%a in ('powershell -NoProfile -Command "(Get-Date).ToString(\"yyyyMMddHHmmss\")" 2^>nul') do if not defined DTS set "DTS=%%a"
-rem #region agent log
->>"%DBG%" echo {"sessionId":"01c49b","runId":"dtsgen","hypothesisId":"H1,H2","location":"attach-and-open.bat:17","message":"dts_after_wmic","data":{"DTS":"!DTS!"},"timestamp":%time:~0,2%%time:~3,2%%time:~6,2%%time:~9,2%}
-rem #endregion
 if not defined DTS set "DTS=00000000000000"
 set "DTS=!DTS:~0,14!"
 if "!DTS!"=="" set "DTS=00000000000000"
 set "JARNAME=MiddleManAgent-!DTS!-!RANDOM!.jar"
 set "JAR=%BUILD_DIR%\!JARNAME!"
-rem #region agent log
->>"%DBG%" echo {"sessionId":"01c49b","runId":"dtsgen","hypothesisId":"H2,H3","location":"attach-and-open.bat:21","message":"jar_name_computed","data":{"DTS":"!DTS!","JARNAME":"!JARNAME!","JAR":"!JAR!"},"timestamp":%time:~0,2%%time:~3,2%%time:~6,2%%time:~9,2%}
-rem #endregion
 call "%AGENT_DIR%\build.bat" "!JARNAME!"
 set BUILDERR=!errorlevel!
 cd /d "%~dp0\.."
@@ -38,9 +28,6 @@ if not "!BUILDERR!"=="0" (
     exit /b 1
 )
 if not exist "!JAR!" (
-    rem #region agent log
-    >>"%DBG%" echo {"sessionId":"01c49b","runId":"dtsgen","hypothesisId":"H3,H4","location":"attach-and-open.bat:33","message":"jar_missing","data":{"JARNAME":"!JARNAME!","JAR":"!JAR!"},"timestamp":%time:~0,2%%time:~3,2%%time:~6,2%%time:~9,2%}
-    rem #endregion
     echo Agent JAR not found at !JAR!
     exit /b 1
 )
