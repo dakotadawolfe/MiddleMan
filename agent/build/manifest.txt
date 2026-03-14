@@ -1,6 +1,0 @@
-Premain-Class: middleman.agent.MiddleManAgent
-Agent-Class: middleman.agent.MiddleManAgent
-Main-Class: middleman.agent.AttachMain
-Can-Redefine-Classes: false
-Can-Retransform-Classes: false
-

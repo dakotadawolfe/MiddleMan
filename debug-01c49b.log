@@ -1,7 +1,0 @@
-{"sessionId":"01c49b","timestamp":1773447331513,"message":"attach_start","data":{"pid":"2648","agentPath":"C:\\Users\\Dakota\\Documents\\Cursor Projects\\RuneLite\\MiddleMan\\agent\\build\\MiddleManAgent-00000000000000-14777.jar"}}
-{"sessionId":"01c49b","timestamp":1773447331563,"location":"AttachMain.main","message":"attach_done","data":{},"hypothesisId":"H3"}
-{"sessionId":"01c49b","message":"start_enter","data":{"agentVersion":"3.0-hotreload-ok"},"timestamp":1773447331565}
-{"sessionId":"01c49b","message":"bind_failed","data":{"attempt":0},"timestamp":1773447331565}
-{"sessionId":"01c49b","message":"requestShutdown_response","data":{"code":200},"timestamp":1773447331567}
-{"sessionId":"01c49b","message":"requestShutdown_result","data":{"ok":true},"timestamp":1773447331574}
-{"sessionId":"01c49b","message":"bind_ok","data":{"attempt":1},"timestamp":1773447332375}
