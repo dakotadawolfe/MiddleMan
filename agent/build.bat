@@ -5,12 +5,7 @@ set SRC=src\main\java
 set OUT=build\classes
 set JAR=build\MiddleManAgent.jar
 if not "%~1"=="" set JAR=build\%~1
-set "DBG=%~2"
 set MANIFEST=build\manifest.txt
-
-rem #region agent log
-call :dbg "build_start" "jar=%JAR%"
-rem #endregion
 
 if not exist "build" mkdir "build"
 if exist "%OUT%" rmdir /s /q "%OUT%"
@@ -28,15 +23,7 @@ echo public final class AgentVersion { public static final String V = "!VERSION!
 
 echo Compiling (Java 11 bytecode for RuneLite JRE)...
 javac -source 11 -target 11 --add-modules jdk.attach -d "%OUT%" -encoding UTF-8 -sourcepath "%SRC%;build\gensrc" build\gensrc\middleman\agent\AgentVersion.java %SRC%\middleman\agent\*.java
-if errorlevel 1 (
-  rem #region agent log
-  call :dbg "javac_fail" "errorlevel=%errorlevel%"
-  rem #endregion
-  exit /b 1
-)
-rem #region agent log
-call :dbg "javac_ok" "out=%OUT%"
-rem #endregion
+if errorlevel 1 exit /b 1
 
 set TSTAMP=%date% %time%
 echo !TSTAMP!> "%OUT%\buildtime.txt"
@@ -49,25 +36,8 @@ echo Can-Retransform-Classes: false>> "%MANIFEST%"
 echo.>> "%MANIFEST%"
 
 echo Building JAR...
-rem #region agent log
-call :dbg "jar_start" "jar=%JAR%"
-rem #endregion
 jar cfm "%JAR%" "%MANIFEST%" -C "%OUT%" .
-if errorlevel 1 (
-  rem #region agent log
-  call :dbg "jar_fail" "errorlevel=%errorlevel%"
-  rem #endregion
-  exit /b 1
-)
-rem #region agent log
-call :dbg "jar_ok" "jar=%JAR%"
-rem #endregion
+if errorlevel 1 exit /b 1
 
 echo Built %JAR%
 endlocal
-goto :eof
-
-:dbg
-if not defined DBG goto :eof
->>"%DBG%" echo {"sessionId":"01c49b","timestamp":"%date% %time%","location":"build.bat","message":"%~1","data":"%~2"}
-goto :eof
