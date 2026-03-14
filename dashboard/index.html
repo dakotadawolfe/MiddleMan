@@ -108,6 +108,10 @@
     <div id="worldObjects" class="empty">—</div>
   </section>
   <section>
+    <h2>Ground items <span style="font-weight:400;color:#64748b;font-size:0.75rem">(items dropped on the ground)</span></h2>
+    <div id="groundItems" class="empty">—</div>
+  </section>
+  <section>
     <h2>World view</h2>
     <div id="worldView" class="empty">—</div>
   </section>
@@ -313,6 +317,26 @@
         });
       });
     }
+
+    function renderGroundItems(d) {
+      const el = document.getElementById('groundItems');
+      const arr = d?.groundItems;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      const maxShow = 80;
+      el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
+        const namePart = (x.name && x.name !== 'null') ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
+        const qty = x.quantity != null ? ' × ' + x.quantity : '';
+        const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
+        const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
+        return '<div class="card">' +
+          '<strong>' + namePart + qty + '</strong>' +
+          (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          '</div>';
+      }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+    }
+
     function escapeHtml(s) {
       const div = document.createElement('div');
       div.textContent = s;
@@ -332,6 +356,7 @@
         renderList('players', data.players, ['name', 'worldX', 'worldY', 'combatLevel']);
         renderNpcs(data);
         renderWorldObjects(data);
+        renderGroundItems(data);
         renderWorldView(data);
         renderInventory(data);
         renderCamera(data);
@@ -346,10 +371,11 @@
         document.getElementById('players').textContent = '—';
         document.getElementById('npcs').textContent = '—';
         document.getElementById('worldObjects').textContent = '—';
+        document.getElementById('groundItems').textContent = '—';
         document.getElementById('worldView').textContent = '—';
         document.getElementById('inventory').textContent = '—';
         document.getElementById('camera').textContent = '—';
-        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldObjects, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
+        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldObjects, #groundItems, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
       }
     }
 

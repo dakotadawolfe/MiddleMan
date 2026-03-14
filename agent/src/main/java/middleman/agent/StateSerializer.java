@@ -41,6 +41,8 @@ final class StateSerializer {
         appendNpcs(sb);
         sb.append(",\"worldObjects\":");
         appendWorldObjects(sb);
+        sb.append(",\"groundItems\":");
+        appendGroundItems(sb);
         sb.append(",\"worldView\":");
         appendWorldView(sb);
         sb.append(",\"inventory\":");
@@ -74,6 +76,12 @@ final class StateSerializer {
     String serializeWorldObjects() {
         StringBuilder sb = new StringBuilder();
         appendWorldObjects(sb);
+        return sb.toString();
+    }
+
+    String serializeGroundItems() {
+        StringBuilder sb = new StringBuilder();
+        appendGroundItems(sb);
         return sb.toString();
     }
 
@@ -510,6 +518,129 @@ final class StateSerializer {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    private void appendGroundItems(StringBuilder sb) {
+        if (clientThread != null) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> holder = new AtomicReference<>();
+            Runnable runOnClient = () -> {
+                try {
+                    holder.set(buildGroundItemsJson());
+                } finally {
+                    latch.countDown();
+                }
+            };
+            try {
+                clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+                if (latch.await(2, TimeUnit.SECONDS) && holder.get() != null) {
+                    sb.append(holder.get());
+                    return;
+                }
+            } catch (Throwable ignored) { }
+            sb.append("[]");
+            return;
+        }
+        sb.append("[]");
+    }
+
+    /** Must be called on client thread. Returns JSON array of ground items (dropped items on tiles), sorted by distance. */
+    private String buildGroundItemsJson() {
+        try {
+            Method getView = client.getClass().getMethod("getTopLevelWorldView");
+            Object view = getView.invoke(client);
+            if (view == null) return "[]";
+            Method getScene = view.getClass().getMethod("getScene");
+            Object scene = getScene.invoke(view);
+            if (scene == null) return "[]";
+            Method getPlane = view.getClass().getMethod("getPlane");
+            Object planeObj = getPlane.invoke(view);
+            int currentPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+            Method getTiles = scene.getClass().getMethod("getTiles");
+            Object tilesObj = getTiles.invoke(scene);
+            if (tilesObj == null || !tilesObj.getClass().isArray()) return "[]";
+            int planes = Array.getLength(tilesObj);
+            if (currentPlane < 0 || currentPlane >= planes) return "[]";
+            Object planeRow = Array.get(tilesObj, currentPlane);
+            if (planeRow == null || !planeRow.getClass().isArray()) return "[]";
+            int playerX = 0, playerY = 0;
+            try {
+                Method getLocalPlayer = client.getClass().getMethod("getLocalPlayer");
+                Object player = getLocalPlayer.invoke(client);
+                if (player != null) {
+                    Method getWorldLoc = player.getClass().getMethod("getWorldLocation");
+                    Object loc = getWorldLoc.invoke(player);
+                    if (loc != null) {
+                        playerX = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                        playerY = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                    }
+                }
+            } catch (Exception ignored) { }
+            List<Object[]> collected = new ArrayList<>();
+            int lenX = Array.getLength(planeRow);
+            for (int x = 0; x < lenX; x++) {
+                Object col = Array.get(planeRow, x);
+                if (col == null || !col.getClass().isArray()) continue;
+                int lenY = Array.getLength(col);
+                for (int y = 0; y < lenY; y++) {
+                    Object tile = Array.get(col, y);
+                    if (tile == null) continue;
+                    appendTileGroundItems(tile, collected, playerX, playerY);
+                }
+            }
+            Collections.sort(collected, (a, b) -> Double.compare((Double) a[0], (Double) b[0]));
+            StringBuilder out = new StringBuilder();
+            out.append("[");
+            for (int i = 0; i < collected.size(); i++) {
+                if (i > 0) out.append(",");
+                out.append(collected.get(i)[1]);
+            }
+            out.append("]");
+            return out.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private void appendTileGroundItems(Object tile, List<Object[]> collected, int playerX, int playerY) {
+        try {
+            Method getGroundItems = tile.getClass().getMethod("getGroundItems");
+            Object itemsObj = getGroundItems.invoke(tile);
+            if (itemsObj == null) return;
+            Method getWorldLocation = tile.getClass().getMethod("getWorldLocation");
+            Object loc = getWorldLocation.invoke(tile);
+            int wx = 0, wy = 0, plane = 0;
+            if (loc != null) {
+                wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+            }
+            double dist = Math.hypot(wx - playerX, wy - playerY);
+            List<Object> itemList = new ArrayList<>();
+            if (itemsObj instanceof List) {
+                for (Object o : (List<?>) itemsObj) itemList.add(o);
+            } else {
+                try {
+                    Method size = itemsObj.getClass().getMethod("size");
+                    Method get = itemsObj.getClass().getMethod("get", int.class);
+                    int n = ((Number) size.invoke(itemsObj)).intValue();
+                    for (int i = 0; i < n; i++) itemList.add(get.invoke(itemsObj, i));
+                } catch (NoSuchMethodException e) {
+                    return;
+                }
+            }
+            for (Object item : itemList) {
+                if (item == null) continue;
+                try {
+                    int id = (Integer) item.getClass().getMethod("getId").invoke(item);
+                    int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
+                    if (id <= 0) continue;
+                    String name = resolveItemName(id);
+                    String json = "{\"id\":" + id + ",\"quantity\":" + qty + ",\"name\":\"" + escape(name) + "\",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + "}";
+                    collected.add(new Object[]{ Double.valueOf(dist), json });
+                } catch (Exception ignored) { }
+            }
+        } catch (Exception ignored) { }
     }
 
     private void appendTileObjects(Object tile, Object client, List<Object[]> collected, int playerX, int playerY) {

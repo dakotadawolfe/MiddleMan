@@ -62,6 +62,7 @@ final class GameStateServer {
         server.createContext("/game/players", this::handlePlayers);
         server.createContext("/game/npcs", this::handleNpcs);
         server.createContext("/game/worldobjects", this::handleWorldObjects);
+        server.createContext("/game/grounditems", this::handleGroundItems);
         server.createContext("/game/worldobject/action", this::handleWorldObjectAction);
         server.createContext("/game/npc/action", this::handleNpcAction);
         server.setExecutor(null);
@@ -124,7 +125,7 @@ final class GameStateServer {
             return;
         }
         String body = "{\"service\":\"MiddleMan\",\"endpoints\":[" +
-                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/worldobject/action\",\"/game/npc/action\",\"/dashboard\"]}";
+                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/dashboard\"]}";
         send(exchange, 200, body);
     }
 
@@ -212,6 +213,24 @@ final class GameStateServer {
                 return;
             }
             String json = "{\"worldObjects\":" + s.serializeWorldObjects() + "}";
+            send(exchange, 200, json);
+        } catch (Exception e) {
+            send(exchange, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleGroundItems(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+        try {
+            StateSerializer s = serializer;
+            if (s == null) {
+                send(exchange, 503, "{\"error\":\"Client not ready\"}");
+                return;
+            }
+            String json = "{\"groundItems\":" + s.serializeGroundItems() + "}";
             send(exchange, 200, json);
         } catch (Exception e) {
             send(exchange, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
