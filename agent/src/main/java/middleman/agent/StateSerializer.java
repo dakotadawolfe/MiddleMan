@@ -296,26 +296,28 @@ final class StateSerializer {
             Method getScene = view.getClass().getMethod("getScene");
             Object scene = getScene.invoke(view);
             if (scene == null) return "[]";
+            Method getPlane = view.getClass().getMethod("getPlane");
+            Object planeObj = getPlane.invoke(view);
+            int currentPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
             Method getTiles = scene.getClass().getMethod("getTiles");
             Object tilesObj = getTiles.invoke(scene);
             if (tilesObj == null || !tilesObj.getClass().isArray()) return "[]";
             int planes = Array.getLength(tilesObj);
+            if (currentPlane < 0 || currentPlane >= planes) return "[]";
+            Object planeRow = Array.get(tilesObj, currentPlane);
+            if (planeRow == null || !planeRow.getClass().isArray()) return "[]";
             StringBuilder out = new StringBuilder();
             out.append("[");
             boolean[] first = { true };
-            for (int p = 0; p < planes; p++) {
-                Object planeRow = Array.get(tilesObj, p);
-                if (planeRow == null || !planeRow.getClass().isArray()) continue;
-                int lenX = Array.getLength(planeRow);
-                for (int x = 0; x < lenX; x++) {
-                    Object col = Array.get(planeRow, x);
-                    if (col == null || !col.getClass().isArray()) continue;
-                    int lenY = Array.getLength(col);
-                    for (int y = 0; y < lenY; y++) {
-                        Object tile = Array.get(col, y);
-                        if (tile == null) continue;
-                        appendTileObjects(tile, client, out, first);
-                    }
+            int lenX = Array.getLength(planeRow);
+            for (int x = 0; x < lenX; x++) {
+                Object col = Array.get(planeRow, x);
+                if (col == null || !col.getClass().isArray()) continue;
+                int lenY = Array.getLength(col);
+                for (int y = 0; y < lenY; y++) {
+                    Object tile = Array.get(col, y);
+                    if (tile == null) continue;
+                    appendTileObjects(tile, client, out, first);
                 }
             }
             out.append("]");
@@ -329,47 +331,35 @@ final class StateSerializer {
         try {
             Method getWall = tile.getClass().getMethod("getWallObject");
             Object wall = getWall.invoke(tile);
-            if (wall != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, wall, "wallObject", client);
-                first[0] = false;
-            }
+            if (wall != null && appendTileObjectJson(out, wall, "wallObject", client, first)) { }
             Method getGround = tile.getClass().getMethod("getGroundObject");
             Object ground = getGround.invoke(tile);
-            if (ground != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, ground, "groundObject", client);
-                first[0] = false;
-            }
+            if (ground != null && appendTileObjectJson(out, ground, "groundObject", client, first)) { }
             Method getDeco = tile.getClass().getMethod("getDecorativeObject");
             Object deco = getDeco.invoke(tile);
-            if (deco != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, deco, "decorativeObject", client);
-                first[0] = false;
-            }
+            if (deco != null && appendTileObjectJson(out, deco, "decorativeObject", client, first)) { }
             Method getGameObjs = tile.getClass().getMethod("getGameObjects");
             Object gameObjs = getGameObjs.invoke(tile);
             if (gameObjs != null && gameObjs.getClass().isArray()) {
                 int n = Array.getLength(gameObjs);
                 for (int i = 0; i < n; i++) {
                     Object go = Array.get(gameObjs, i);
-                    if (go != null) {
-                        if (!first[0]) out.append(",");
-                        appendTileObjectJson(out, go, "gameObject", client);
-                        first[0] = false;
-                    }
+                    if (go != null) appendTileObjectJson(out, go, "gameObject", client, first);
                 }
             }
         } catch (Exception ignored) { }
     }
 
-    private void appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client) {
+    /** Appends object JSON only if name is non-null and non-empty. Returns true if appended. */
+    private boolean appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client, boolean[] first) {
         try {
             Method getId = tileObj.getClass().getMethod("getId");
             Object idObj = getId.invoke(tileObj);
             int id = idObj != null ? ((Number) idObj).intValue() : -1;
             String name = resolveObjectName(client, id);
+            if (name == null || name.isEmpty()) return false;
+            if (!first[0]) out.append(",");
+            first[0] = false;
             Method getWorldLoc = tileObj.getClass().getMethod("getWorldLocation");
             Object loc = getWorldLoc.invoke(tileObj);
             int wx = 0, wy = 0, plane = 0;
@@ -379,11 +369,12 @@ final class StateSerializer {
                 plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
             }
             out.append("{\"type\":\"").append(escape(type)).append("\",\"id\":").append(id);
-            if (!name.isEmpty()) out.append(",\"name\":\"").append(escape(name)).append("\"");
+            out.append(",\"name\":\"").append(escape(name)).append("\"");
             out.append(",\"worldX\":").append(wx).append(",\"worldY\":").append(wy).append(",\"plane\":").append(plane);
             out.append("}");
+            return true;
         } catch (Exception e) {
-            out.append("{\"type\":\"").append(escape(type)).append("\",\"error\":\"").append(escape(e.getMessage() != null ? e.getMessage() : "")).append("\"}");
+            return false;
         }
     }
 
