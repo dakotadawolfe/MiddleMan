@@ -350,12 +350,17 @@ final class StateSerializer {
         } catch (Exception ignored) { }
     }
 
-    /** Returns true if object was appended, false if skipped (no name = not included). */
+    /** Null/placeholder object IDs to always omit (even if client gives them a name). */
+    private static final int[] SKIP_OBJECT_IDS = { 0, 20731, 20737 };
+
+    /** Returns true if object was appended, false if skipped (no name or placeholder id). */
     private boolean appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client, boolean[] first) {
         try {
             Method getId = tileObj.getClass().getMethod("getId");
             Object idObj = getId.invoke(tileObj);
             int id = idObj != null ? ((Number) idObj).intValue() : -1;
+            for (int skip : SKIP_OBJECT_IDS) if (id == skip) return false;
+            if (!isInteractable(client, id)) return false;
             String name = resolveObjectName(client, id);
             if (name == null || name.isEmpty()) return false;
             if (!first[0]) out.append(",");
@@ -378,6 +383,38 @@ final class StateSerializer {
             first[0] = false;
             out.append("{\"type\":\"").append(escape(type)).append("\",\"error\":\"").append(escape(e.getMessage() != null ? e.getMessage() : "")).append("\"}");
             return true;
+        }
+    }
+
+    private boolean isInteractable(Object client, int objectId) {
+        if (objectId <= 0) return false;
+        try {
+            Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
+            if (getDef == null) return false;
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, objectId);
+            if (comp == null) return false;
+            Object effective = comp;
+            try {
+                Method getImpostorIds = comp.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(comp);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = comp.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(comp);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return false;
+            int len = Array.getLength(actionsObj);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null && String.valueOf(a).trim().length() > 0) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
         }
     }
 
