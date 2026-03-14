@@ -121,6 +121,26 @@ final class StateSerializer {
     }
 
     private void appendNpcs(StringBuilder sb) {
+        if (clientThread != null) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> holder = new AtomicReference<>();
+            Runnable runOnClient = () -> {
+                try {
+                    holder.set(buildNpcsJson());
+                } finally {
+                    latch.countDown();
+                }
+            };
+            try {
+                clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+                if (latch.await(2, TimeUnit.SECONDS) && holder.get() != null) {
+                    sb.append(holder.get());
+                    return;
+                }
+            } catch (Throwable ignored) { }
+            sb.append("[]");
+            return;
+        }
         try {
             Method getView = client.getClass().getMethod("getTopLevelWorldView");
             Object view = getView.invoke(client);
@@ -134,6 +154,101 @@ final class StateSerializer {
         } catch (Exception e) {
             sb.append("[]");
         }
+    }
+
+    /** Must be called on client thread. Returns JSON array of NPCs sorted by distance (closest first). */
+    private String buildNpcsJson() {
+        try {
+            Method getView = client.getClass().getMethod("getTopLevelWorldView");
+            Object view = getView.invoke(client);
+            if (view == null) return "[]";
+            Method npcsMethod = view.getClass().getMethod("npcs");
+            Object set = npcsMethod.invoke(view);
+            if (set == null) return "[]";
+
+            int playerX = 0, playerY = 0;
+            try {
+                Method getLocalPlayer = client.getClass().getMethod("getLocalPlayer");
+                Object player = getLocalPlayer.invoke(client);
+                if (player != null) {
+                    Method getWorldLoc = player.getClass().getMethod("getWorldLocation");
+                    Object loc = getWorldLoc.invoke(player);
+                    if (loc != null) {
+                        playerX = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                        playerY = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                    }
+                }
+            } catch (Exception ignored) { }
+
+            List<Object> npcList = new ArrayList<>();
+            if (set instanceof Iterable) {
+                for (Object a : (Iterable<?>) set) npcList.add(a);
+            } else {
+                try {
+                    Method size = set.getClass().getMethod("size");
+                    Method get = set.getClass().getMethod("get", int.class);
+                    int n = ((Number) size.invoke(set)).intValue();
+                    for (int i = 0; i < n; i++) npcList.add(get.invoke(set, i));
+                } catch (NoSuchMethodException e) {
+                    return "[]";
+                }
+            }
+
+            List<Object[]> collected = new ArrayList<>();
+            for (Object actor : npcList) {
+                if (actor == null) continue;
+                int npcId = -1;
+                try {
+                    Object idObj = actor.getClass().getMethod("getId").invoke(actor);
+                    if (idObj != null) npcId = ((Number) idObj).intValue();
+                } catch (Exception ignored) { }
+                if (npcId <= 0 || !isNpcInteractable(client, npcId)) continue;
+                int wx = playerX, wy = playerY;
+                try {
+                    Method getWorldLocation = actor.getClass().getMethod("getWorldLocation");
+                    Object loc = getWorldLocation.invoke(actor);
+                    if (loc != null) {
+                        wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                        wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                    } else {
+                        Method getLocalLocation = actor.getClass().getMethod("getLocalLocation");
+                        Object local = getLocalLocation.invoke(actor);
+                        if (local != null && view != null) {
+                            int lx = (Integer) local.getClass().getMethod("getX").invoke(local);
+                            int ly = (Integer) local.getClass().getMethod("getY").invoke(local);
+                            int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
+                            int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
+                            final int LOCAL_COORD_BITS = 7;
+                            wx = baseX + (lx >> LOCAL_COORD_BITS);
+                            wy = baseY + (ly >> LOCAL_COORD_BITS);
+                        }
+                    }
+                } catch (Exception ignored) { }
+                double dist = Math.hypot(wx - playerX, wy - playerY);
+                StringBuilder jsb = new StringBuilder();
+                buildSingleNpcJson(jsb, actor);
+                collected.add(new Object[]{ Double.valueOf(dist), jsb.toString() });
+            }
+            Collections.sort(collected, (a, b) -> Double.compare((Double) a[0], (Double) b[0]));
+            StringBuilder out = new StringBuilder();
+            out.append("[");
+            for (int i = 0; i < collected.size(); i++) {
+                if (i > 0) out.append(",");
+                out.append(collected.get(i)[1]);
+            }
+            out.append("]");
+            return out.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** Appends a single NPC JSON object (with braces) to the given StringBuilder. */
+    private void buildSingleNpcJson(StringBuilder sb, Object actor) {
+        sb.append("{");
+        appendActorFields(sb, actor, false);
+        appendNpcFields(sb, actor);
+        sb.append("}");
     }
 
     private void appendActorList(StringBuilder sb, Object collectionOrSet, boolean isPlayer) {
@@ -458,6 +573,44 @@ final class StateSerializer {
                 if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
                     Method getImpostor = comp.getClass().getMethod("getImpostor");
                     Object imp = getImpostor.invoke(comp);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return false;
+            int len = Array.getLength(actionsObj);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null && String.valueOf(a).trim().length() > 0) return true;
+            }
+            return false;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    /** Returns true if the NPC has at least one menu action (like world objects: only show interactable). */
+    private boolean isNpcInteractable(Object client, int npcId) {
+        if (npcId <= 0) return false;
+        try {
+            Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
+            if (getDef == null) return false;
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, npcId);
+            if (comp == null) return false;
+            Object effective = comp;
+            try {
+                Method transform = comp.getClass().getMethod("transform");
+                Object transformed = transform.invoke(comp);
+                if (transformed != null) effective = transformed;
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException ignored) { }
+            try {
+                Method getImpostorIds = effective.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(effective);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = effective.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(effective);
                     if (imp != null) effective = imp;
                 }
             } catch (NoSuchMethodException ignored) { }
