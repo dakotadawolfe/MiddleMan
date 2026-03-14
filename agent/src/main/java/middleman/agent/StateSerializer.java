@@ -264,6 +264,7 @@ final class StateSerializer {
         AtomicReference<byte[]> result = new AtomicReference<>();
         Runnable runOnClient = () -> {
             try {
+                if (!isGameStateReadyForSprites()) { latch.countDown(); return; }
                 Object sprite = createItemSprite(itemId);
                 if (sprite == null) { latch.countDown(); return; }
                 Object img = sprite.getClass().getMethod("toBufferedImage").invoke(sprite);
@@ -281,11 +282,30 @@ final class StateSerializer {
         return null;
     }
 
+    /** True when game state is at least LOGIN_SCREEN so item cache is available. */
+    private boolean isGameStateReadyForSprites() {
+        try {
+            Method getState = client.getClass().getMethod("getGameState");
+            Object state = getState.invoke(client);
+            if (state == null) return false;
+            ClassLoader loader = client.getClass().getClassLoader();
+            Class<?> gameStateClass = Class.forName("net.runelite.api.GameState", false, loader);
+            Object loginScreen = gameStateClass.getField("LOGIN_SCREEN").get(null);
+            Method ordinal = state.getClass().getMethod("ordinal");
+            int current = ((Number) ordinal.invoke(state)).intValue();
+            int required = ((Number) ordinal.invoke(loginScreen)).intValue();
+            return current >= required;
+        } catch (Throwable e) { return false; }
+    }
+
     private Object createItemSprite(int itemId) {
         try {
             Method m = client.getClass().getMethod("createItemSprite", int.class, int.class, int.class, int.class, int.class, boolean.class, int.class);
             int shadow = 3153952; // SpritePixels.DEFAULT_SHADOW_COLOR
-            return m.invoke(client, itemId, 1, 0, shadow, 0, false, 1);
+            int scale = 512;      // Constants.CLIENT_DEFAULT_ZOOM - required for correct sprite size
+            int border = 1;       // match ItemManager: draw border
+            int stackable = 0;    // ItemQuantityMode.NEVER
+            return m.invoke(client, itemId, 1, border, shadow, stackable, false, scale);
         } catch (Throwable e) { return null; }
     }
 
