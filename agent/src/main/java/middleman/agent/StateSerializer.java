@@ -331,46 +331,42 @@ final class StateSerializer {
         try {
             Method getWall = tile.getClass().getMethod("getWallObject");
             Object wall = getWall.invoke(tile);
-            if (wall != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, wall, "wallObject", client);
-                first[0] = false;
-            }
+            if (wall != null && appendTileObjectJson(out, wall, "wallObject", client, first)) { }
             Method getGround = tile.getClass().getMethod("getGroundObject");
             Object ground = getGround.invoke(tile);
-            if (ground != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, ground, "groundObject", client);
-                first[0] = false;
-            }
+            if (ground != null && appendTileObjectJson(out, ground, "groundObject", client, first)) { }
             Method getDeco = tile.getClass().getMethod("getDecorativeObject");
             Object deco = getDeco.invoke(tile);
-            if (deco != null) {
-                if (!first[0]) out.append(",");
-                appendTileObjectJson(out, deco, "decorativeObject", client);
-                first[0] = false;
-            }
+            if (deco != null && appendTileObjectJson(out, deco, "decorativeObject", client, first)) { }
             Method getGameObjs = tile.getClass().getMethod("getGameObjects");
             Object gameObjs = getGameObjs.invoke(tile);
             if (gameObjs != null && gameObjs.getClass().isArray()) {
                 int n = Array.getLength(gameObjs);
                 for (int i = 0; i < n; i++) {
                     Object go = Array.get(gameObjs, i);
-                    if (go != null) {
-                        if (!first[0]) out.append(",");
-                        appendTileObjectJson(out, go, "gameObject", client);
-                        first[0] = false;
-                    }
+                    if (go != null) appendTileObjectJson(out, go, "gameObject", client, first);
                 }
             }
         } catch (Exception ignored) { }
     }
 
-    private void appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client) {
+    /** Known null/placeholder object IDs to omit from the list (e.g. 20737 = NULL_20737). */
+    private static final int[] SKIP_OBJECT_IDS = { 0, 20737 };
+
+    private static boolean shouldSkipObjectId(int id) {
+        for (int skip : SKIP_OBJECT_IDS) if (id == skip) return true;
+        return false;
+    }
+
+    /** Returns true if object was appended, false if skipped (e.g. null placeholder id). */
+    private boolean appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client, boolean[] first) {
         try {
             Method getId = tileObj.getClass().getMethod("getId");
             Object idObj = getId.invoke(tileObj);
             int id = idObj != null ? ((Number) idObj).intValue() : -1;
+            if (shouldSkipObjectId(id)) return false;
+            if (!first[0]) out.append(",");
+            first[0] = false;
             String name = resolveObjectName(client, id);
             Method getWorldLoc = tileObj.getClass().getMethod("getWorldLocation");
             Object loc = getWorldLoc.invoke(tileObj);
@@ -384,8 +380,12 @@ final class StateSerializer {
             if (name != null && !name.isEmpty()) out.append(",\"name\":\"").append(escape(name)).append("\"");
             out.append(",\"worldX\":").append(wx).append(",\"worldY\":").append(wy).append(",\"plane\":").append(plane);
             out.append("}");
+            return true;
         } catch (Exception e) {
+            if (!first[0]) out.append(",");
+            first[0] = false;
             out.append("{\"type\":\"").append(escape(type)).append("\",\"error\":\"").append(escape(e.getMessage() != null ? e.getMessage() : "")).append("\"}");
+            return true;
         }
     }
 
@@ -407,16 +407,41 @@ final class StateSerializer {
                     if (imp != null) effective = imp;
                 }
             } catch (NoSuchMethodException ignored) { }
-            Method getName = effective.getClass().getMethod("getName");
-            Object name = getName.invoke(effective);
-            if (name != null) {
-                String s = String.valueOf(name).trim();
-                if (!s.isEmpty()) return s;
-            }
+            String s = getNameFromComposition(effective);
+            if (s != null && !s.isEmpty()) return s;
+            s = getNameFromComposition(comp);
+            if (s != null && !s.isEmpty()) return s;
             return "";
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private String getNameFromComposition(Object comp) {
+        if (comp == null) return "";
+        Class<?> c = comp.getClass();
+        try {
+            Method getName = c.getMethod("getName");
+            getName.setAccessible(true);
+            Object name = getName.invoke(comp);
+            if (name != null) {
+                String s = String.valueOf(name).trim();
+                if (!s.isEmpty()) return s;
+            }
+        } catch (Exception ignored) { }
+        for (Method m : c.getMethods()) {
+            if (m.getParameterCount() != 0 || m.getReturnType() != String.class) continue;
+            if (!m.getName().toLowerCase().contains("name")) continue;
+            try {
+                m.setAccessible(true);
+                Object name = m.invoke(comp);
+                if (name != null) {
+                    String s = String.valueOf(name).trim();
+                    if (!s.isEmpty()) return s;
+                }
+            } catch (Exception ignored) { }
+        }
+        return "";
     }
 
     private static Method findMethod(Class<?> c, String... names) {
