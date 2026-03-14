@@ -1387,7 +1387,6 @@ final class StateSerializer {
             String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
             menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
         }
-        // Load MenuAction from the client's classloader so it matches the Client interface (runelite_src/runelite-api/.../MenuAction.java)
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
         @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -1415,9 +1414,57 @@ final class StateSerializer {
         String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
-        Method menuAction = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        menuAction.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
-        return null;
+        Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        // Try 1: scene coords (param0=sceneX, param1=sceneY) - common for tile objects
+        try {
+            menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
+            return null;
+        } catch (java.lang.reflect.InvocationTargetException e1) {
+            // Try 2: local 1/128 tile coords
+            try {
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+                return null;
+            } catch (java.lang.reflect.InvocationTargetException e2) {
+                // Try 3: inject via menu entry then invoke (some clients process from current menu)
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                if (err == null) return null;
+                Throwable cause = e2.getCause();
+                if (cause != null) throw new RuntimeException(cause);
+                throw e2;
+            }
+        }
+    }
+
+    /** Fallback: set a single menu entry and call menuAction so client sees consistent menu state. */
+    private String invokeViaMenuEntry(Object client, ClassLoader clientLoader, Class<?> menuActionClass,
+            int param0, int param1, Object menuActionEnum, int identifier, int itemId, String option, String target,
+            Method menuActionMethod) {
+        try {
+            Method getMenu = client.getClass().getMethod("getMenu");
+            Object menu = getMenu.invoke(client);
+            if (menu == null) return "No menu";
+            Method createEntry = menu.getClass().getMethod("createMenuEntry", int.class);
+            Object entry = createEntry.invoke(menu, 0);
+            if (entry == null) return "createMenuEntry failed";
+            entry.getClass().getMethod("setParam0", int.class).invoke(entry, param0);
+            entry.getClass().getMethod("setParam1", int.class).invoke(entry, param1);
+            entry.getClass().getMethod("setIdentifier", int.class).invoke(entry, identifier);
+            entry.getClass().getMethod("setOption", String.class).invoke(entry, option);
+            entry.getClass().getMethod("setTarget", String.class).invoke(entry, target);
+            entry.getClass().getMethod("setType", menuActionClass).invoke(entry, menuActionEnum);
+            entry.getClass().getMethod("setItemId", int.class).invoke(entry, itemId);
+            Class<?> entryArrayClass = Array.newInstance(entry.getClass(), 0).getClass();
+            Method setEntries = menu.getClass().getMethod("setMenuEntries", entryArrayClass);
+            Object entryArray = Array.newInstance(entry.getClass(), 1);
+            Array.set(entryArray, 0, entry);
+            setEntries.invoke(menu, entryArray);
+            int p0 = (Integer) entry.getClass().getMethod("getParam0").invoke(entry);
+            int p1 = (Integer) entry.getClass().getMethod("getParam1").invoke(entry);
+            menuActionMethod.invoke(client, p0, p1, menuActionEnum, identifier, itemId, option, target);
+            return null;
+        } catch (Exception e) {
+            return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
+        }
     }
 
     /**
@@ -1511,8 +1558,18 @@ final class StateSerializer {
         String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
         String target = resolveNpcName(client, npcId);
         if (target == null) target = "";
-        Method menuAction = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        menuAction.invoke(client, localX, localY, menuActionEnum, npcId, -1, option, target);
+        Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        try {
+            menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, npcId, -1, option, target);
+        } catch (java.lang.reflect.InvocationTargetException e1) {
+            try {
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, npcId, -1, option, target);
+            } catch (java.lang.reflect.InvocationTargetException e2) {
+                Throwable cause = e2.getCause();
+                if (cause != null) throw new RuntimeException(cause);
+                throw e2;
+            }
+        }
         return null;
     }
 

@@ -133,6 +133,21 @@
     const autoEl = document.getElementById('auto');
     const statusEl = document.getElementById('status');
 
+    // Pause auto-refresh while user is using action menus (expand card / click actions). Unpause on click outside.
+    window._pauseRefresh = false;
+    function pauseAutoRefresh() {
+      window._pauseRefresh = true;
+      if (window._mid) { clearInterval(window._mid); window._mid = null; }
+    }
+    function unpauseAutoRefresh() {
+      window._pauseRefresh = false;
+      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
+      if (autoEl.checked) {
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      }
+    }
+
     function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
 
     const loadStartTime = Date.now();
@@ -237,6 +252,7 @@
           if (e.target.classList.contains('npc-action-link')) {
             e.preventDefault();
             e.stopPropagation();
+            pauseAutoRefresh();
             const link = e.target;
             if (link.classList.contains('sending')) return;
             const id = link.getAttribute('data-id');
@@ -258,9 +274,9 @@
           }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
-            if (window._mid) { clearInterval(window._mid); window._mid = null; }
-          } else if (autoEl.checked) {
-            window._mid = setInterval(fetchState, 50);
+            pauseAutoRefresh();
+          } else {
+            unpauseAutoRefresh();
           }
         });
       });
@@ -329,6 +345,7 @@
           if (e.target.classList.contains('object-action-link')) {
             e.preventDefault();
             e.stopPropagation();
+            pauseAutoRefresh();
             const link = e.target;
             if (link.classList.contains('sending')) return;
             const id = link.getAttribute('data-id');
@@ -351,9 +368,9 @@
           }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
-            if (window._mid) { clearInterval(window._mid); window._mid = null; }
-          } else if (autoEl.checked) {
-            window._mid = setInterval(fetchState, 50);
+            pauseAutoRefresh();
+          } else {
+            unpauseAutoRefresh();
           }
         });
       });
@@ -401,6 +418,7 @@
     }
 
     async function fetchState() {
+      if (window._pauseRefresh) return;
       try {
         const r = await fetch(base() + '/game/state?t=' + Date.now());
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
@@ -438,13 +456,25 @@
       }
     }
 
-    refreshEl.addEventListener('click', fetchState);
+    refreshEl.addEventListener('click', function () {
+      var wasPaused = window._pauseRefresh;
+      window._pauseRefresh = false;
+      fetchState();
+      if (wasPaused) window._pauseRefresh = true;
+    });
     autoEl.addEventListener('change', function () {
       if (autoEl.checked) {
         window._mid = setInterval(fetchState, 50);
         fetchState();
       } else {
         if (window._mid) clearInterval(window._mid);
+      }
+    });
+
+    // Click outside world-object / NPC cards: unpause and collapse so auto-refresh resumes
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card')) {
+        if (window._pauseRefresh) unpauseAutoRefresh();
       }
     });
 
