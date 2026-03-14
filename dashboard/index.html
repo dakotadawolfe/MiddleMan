@@ -70,6 +70,9 @@
     .world-object-card:hover { outline: 1px solid #475569; }
     .world-object-card .object-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
     .world-object-card.expanded .object-actions { display: block; }
+    .object-action-link { cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px; }
+    .object-action-link:hover { color: #bae6fd; }
+    .object-action-link.sending { pointer-events: none; opacity: 0.7; }
   </style>
 </head>
 <body>
@@ -223,14 +226,40 @@
         const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
         const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
         const actions = Array.isArray(x.actions) ? x.actions.filter(Boolean) : [];
-        const actionsHtml = actions.length ? '<div class="object-actions"><strong>Actions:</strong> ' + actions.map(a => escapeHtml(String(a))).join(', ') + '</div>' : '';
+        const objType = (x.type && typeof x.type === 'string') ? x.type : 'gameObject';
+        const actionsHtml = actions.length ? '<div class="object-actions"><strong>Actions:</strong> ' + actions.map((a, idx) =>
+          '<span class="object-action-link" data-id="' + (x.id ?? '') + '" data-world-x="' + (x.worldX ?? '') + '" data-world-y="' + (x.worldY ?? '') + '" data-plane="' + (x.plane ?? '0') + '" data-type="' + escapeHtml(objType) + '" data-action-index="' + idx + '">' + escapeHtml(String(a)) + '</span>'
+        ).join(', ') + '</div>' : '';
         return '<div class="card world-object-card" tabindex="0">' +
           '<strong>' + type + ': ' + idPart + '</strong>' +
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
           actionsHtml + '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
       el.querySelectorAll('.world-object-card').forEach(card => {
-        card.addEventListener('click', () => {
+        card.addEventListener('click', (e) => {
+          if (e.target.classList.contains('object-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            const link = e.target;
+            if (link.classList.contains('sending')) return;
+            const id = link.getAttribute('data-id');
+            const worldX = link.getAttribute('data-world-x');
+            const worldY = link.getAttribute('data-world-y');
+            const plane = link.getAttribute('data-plane') || '0';
+            const type = link.getAttribute('data-type') || 'gameObject';
+            const actionIndex = link.getAttribute('data-action-index') || '0';
+            link.classList.add('sending');
+            const body = new URLSearchParams({ id, worldX, worldY, plane, type, actionIndex });
+            fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(r => r.json())
+              .then(data => {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(err => { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
             if (window._mid) { clearInterval(window._mid); window._mid = null; }

@@ -668,6 +668,101 @@ final class StateSerializer {
         }
     }
 
+    /**
+     * Invoke a world object menu action on the client thread.
+     * @return null on success, or an error message.
+     */
+    String invokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex) {
+        if (clientThread == null) return "Client not ready";
+        if (objectId <= 0) return "Invalid object id";
+        if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> error = new AtomicReference<>();
+        Runnable runOnClient = () -> {
+            try {
+                String err = doInvokeWorldObjectAction(objectId, worldX, worldY, plane, type, actionIndex);
+                error.set(err);
+            } catch (Throwable t) {
+                error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
+            } finally {
+                latch.countDown();
+            }
+        };
+        try {
+            clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                return "Timeout";
+            }
+            return error.get();
+        } catch (Exception e) {
+            return e.getMessage() != null ? e.getMessage() : "Invoke failed";
+        }
+    }
+
+    /** Must be called on client thread. Returns null on success. */
+    private String doInvokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex) throws Exception {
+        Method getView = client.getClass().getMethod("getTopLevelWorldView");
+        Object view = getView.invoke(client);
+        if (view == null) return "No world view";
+        int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
+        int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
+        Object planeObj = view.getClass().getMethod("getPlane").invoke(view);
+        int viewPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+        int sizeX = 104;
+        int sizeY = 104;
+        try {
+            Method getSizeX = view.getClass().getMethod("getSizeX");
+            Method getSizeY = view.getClass().getMethod("getSizeY");
+            sizeX = (Integer) getSizeX.invoke(view);
+            sizeY = (Integer) getSizeY.invoke(view);
+        } catch (NoSuchMethodException ignored) { }
+        int sceneX = worldX - baseX;
+        int sceneY = worldY - baseY;
+        if (sceneX < 0 || sceneX >= sizeX || sceneY < 0 || sceneY >= sizeY) {
+            return "Object not in current view";
+        }
+        if (viewPlane != plane) return "Wrong plane";
+        final int LOCAL_COORD_BITS = 7;
+        int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        String menuActionName;
+        if ("gameObject".equals(type)) {
+            String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
+            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        } else {
+            String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
+            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        }
+        Class<?> menuActionClass = Class.forName("net.runelite.api.MenuAction");
+        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
+        Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
+        if (getDef == null) return "No object definition method";
+        Object comp = getDef.invoke(client, objectId);
+        if (comp == null) return "Unknown object id";
+        Object effective = comp;
+        try {
+            Method getImpostorIds = comp.getClass().getMethod("getImpostorIds");
+            Object ids = getImpostorIds.invoke(comp);
+            if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                Method getImpostor = comp.getClass().getMethod("getImpostor");
+                Object imp = getImpostor.invoke(comp);
+                if (imp != null) effective = imp;
+            }
+        } catch (NoSuchMethodException ignored) { }
+        Method getActions = effective.getClass().getMethod("getActions");
+        Object actionsObj = getActions.invoke(effective);
+        if (actionsObj == null || !actionsObj.getClass().isArray()) return "No actions";
+        int len = Array.getLength(actionsObj);
+        if (actionIndex >= len) return "Invalid action index";
+        Object a = Array.get(actionsObj, actionIndex);
+        String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
+        String target = resolveObjectName(client, objectId);
+        if (target == null) target = "";
+        Method menuAction = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        menuAction.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+        return null;
+    }
+
     private static String escape(String s) {
         if (s == null) return "";
         StringBuilder out = new StringBuilder();
