@@ -259,13 +259,17 @@ final class StateSerializer {
      * Must be called from a context that can block; runs sprite creation on client thread.
      */
     byte[] getItemSpritePng(int itemId) {
+        return getItemSpritePng(itemId, false);
+    }
+
+    byte[] getItemSpritePng(int itemId, boolean noted) {
         if (itemId <= 0) return null;
         CountDownLatch latch = new CountDownLatch(1);
         AtomicReference<byte[]> result = new AtomicReference<>();
         Runnable runOnClient = () -> {
             try {
                 if (!isGameStateReadyForSprites()) { latch.countDown(); return; }
-                Object sprite = createItemSprite(itemId);
+                Object sprite = createItemSprite(itemId, noted);
                 if (sprite == null) { latch.countDown(); return; }
                 Object img = sprite.getClass().getMethod("toBufferedImage").invoke(sprite);
                 if (!(img instanceof BufferedImage)) { latch.countDown(); return; }
@@ -298,14 +302,14 @@ final class StateSerializer {
         } catch (Throwable e) { return false; }
     }
 
-    private Object createItemSprite(int itemId) {
+    private Object createItemSprite(int itemId, boolean noted) {
         try {
             Method m = client.getClass().getMethod("createItemSprite", int.class, int.class, int.class, int.class, int.class, boolean.class, int.class);
             int shadow = 3153952; // SpritePixels.DEFAULT_SHADOW_COLOR
             int scale = 512;      // Constants.CLIENT_DEFAULT_ZOOM - required for correct sprite size
             int border = 1;       // match ItemManager: draw border
             int stackable = 0;    // ItemQuantityMode.NEVER
-            return m.invoke(client, itemId, 1, border, shadow, stackable, false, scale);
+            return m.invoke(client, itemId, 1, border, shadow, stackable, noted, scale);
         } catch (Throwable e) { return null; }
     }
 
@@ -1230,7 +1234,8 @@ final class StateSerializer {
                     int id = (Integer) item.getClass().getMethod("getId").invoke(item);
                     int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
                     String name = resolveItemName(id);
-                    out.append("{\"slot\":").append(i).append(",\"id\":").append(id).append(",\"quantity\":").append(qty).append(",\"name\":\"").append(escape(name)).append("\"}");
+                    boolean noted = resolveItemNoted(id);
+                    out.append("{\"slot\":").append(i).append(",\"id\":").append(id).append(",\"quantity\":").append(qty).append(",\"name\":\"").append(escape(name)).append("\",\"noted\":").append(noted).append("}");
                 }
             }
             out.append("]");
@@ -1238,6 +1243,18 @@ final class StateSerializer {
         } catch (Exception e) {
             return "[]";
         }
+    }
+
+    /** True if item is noted (getNote() == 799). Must be called on client thread. */
+    private boolean resolveItemNoted(int itemId) {
+        if (itemManager == null || itemId <= 0) return false;
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return false;
+            Object note = comp.getClass().getMethod("getNote").invoke(comp);
+            return note != null && ((Number) note).intValue() == 799;
+        } catch (Exception e) { return false; }
     }
 
     /** Resolve item name via ItemManager (must be called on client thread). Returns "" if unavailable. */

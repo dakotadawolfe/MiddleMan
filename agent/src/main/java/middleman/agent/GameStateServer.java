@@ -355,6 +355,8 @@ final class GameStateServer {
             return;
         }
         String idStr = path.substring(prefix.length()).trim();
+        int slash = idStr.indexOf('/');
+        if (slash >= 0) idStr = idStr.substring(0, slash);
         int itemId;
         try {
             itemId = Integer.parseInt(idStr);
@@ -362,12 +364,24 @@ final class GameStateServer {
             send(exchange, 400, "{\"error\":\"Invalid item id\"}");
             return;
         }
+        boolean noted = false;
+        String query = exchange.getRequestURI().getQuery();
+        if (query != null) {
+            for (String param : query.split("&")) {
+                int eq = param.indexOf('=');
+                if (eq > 0 && "noted".equals(param.substring(0, eq).trim())) {
+                    String val = param.substring(eq + 1).trim();
+                    noted = "1".equals(val) || "true".equalsIgnoreCase(val);
+                    break;
+                }
+            }
+        }
         StateSerializer s = serializer;
         if (s == null) {
             send(exchange, 503, "{\"error\":\"Client not ready\"}");
             return;
         }
-        byte[] png = s.getItemSpritePng(itemId);
+        byte[] png = s.getItemSpritePng(itemId, noted);
         if (png == null || png.length == 0) {
             send(exchange, 404, "{\"error\":\"Sprite not found\"}");
             return;

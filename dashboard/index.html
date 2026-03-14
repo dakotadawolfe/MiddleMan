@@ -286,7 +286,8 @@
       el.innerHTML = '<div class="grid">' + filled.map(x => {
         const slot = x.slot != null ? 'Slot ' + x.slot + ': ' : '';
         const namePart = x.name ? x.id + ' (' + x.name + ')' : x.id;
-        const iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        let iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        if (iconUrl && x.noted) iconUrl += '?noted=1';
         const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
         return '<div class="card card-with-icon">' + iconImg + '<div><strong>' + slot + namePart + '</strong> × ' + (x.quantity ?? 0) + '</div></div>';
       }).join('') + '</div>';
