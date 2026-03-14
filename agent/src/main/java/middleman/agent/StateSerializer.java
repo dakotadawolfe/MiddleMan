@@ -392,11 +392,23 @@ final class StateSerializer {
     private String resolveObjectName(Object client, int objectId) {
         if (objectId <= 0) return "";
         try {
-            Method getDef = client.getClass().getMethod("getObjectDefinition", int.class);
+            Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
+            if (getDef == null) return "";
+            getDef.setAccessible(true);
             Object comp = getDef.invoke(client, objectId);
             if (comp == null) return "";
-            Method getName = comp.getClass().getMethod("getName");
-            Object name = getName.invoke(comp);
+            Object effective = comp;
+            try {
+                Method getImpostorIds = comp.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(comp);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = comp.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(comp);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getName = effective.getClass().getMethod("getName");
+            Object name = getName.invoke(effective);
             if (name != null) {
                 String s = String.valueOf(name).trim();
                 if (!s.isEmpty()) return s;
@@ -405,6 +417,29 @@ final class StateSerializer {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private static Method findMethod(Class<?> c, String... names) {
+        Class<?>[] paramTypes = { int.class, Integer.class };
+        for (Class<?> cls = c; cls != null; cls = cls.getSuperclass()) {
+            for (String name : names) {
+                for (Class<?> param : paramTypes) {
+                    try {
+                        return cls.getMethod(name, param);
+                    } catch (NoSuchMethodException ignored) { }
+                }
+            }
+        }
+        for (Class<?> iface : c.getInterfaces()) {
+            for (String name : names) {
+                for (Class<?> param : paramTypes) {
+                    try {
+                        return iface.getMethod(name, param);
+                    } catch (NoSuchMethodException ignored) { }
+                }
+            }
+        }
+        return null;
     }
 
     private void appendWorldView(StringBuilder sb) {
