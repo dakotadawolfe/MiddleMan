@@ -8,9 +8,11 @@ import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -420,6 +422,7 @@ final class StateSerializer {
             }
 
             List<Object[]> collected = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
             for (Object actor : npcList) {
                 if (actor == null) continue;
                 int npcId = -1;
@@ -428,13 +431,16 @@ final class StateSerializer {
                     if (idObj != null) npcId = ((Number) idObj).intValue();
                 } catch (Exception ignored) { }
                 if (npcId <= 0 || !isNpcInteractable(client, npcId)) continue;
-                int wx = playerX, wy = playerY;
+                int wx = playerX, wy = playerY, plane = 0;
                 try {
                     Method getWorldLocation = actor.getClass().getMethod("getWorldLocation");
                     Object loc = getWorldLocation.invoke(actor);
                     if (loc != null) {
                         wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
                         wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                        try {
+                            plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+                        } catch (Exception ignored) { }
                     } else {
                         Method getLocalLocation = actor.getClass().getMethod("getLocalLocation");
                         Object local = getLocalLocation.invoke(actor);
@@ -449,6 +455,8 @@ final class StateSerializer {
                         }
                     }
                 } catch (Exception ignored) { }
+                String key = npcId + "_" + wx + "_" + wy + "_" + plane;
+                if (!seen.add(key)) continue;
                 double dist = Math.hypot(wx - playerX, wy - playerY);
                 StringBuilder jsb = new StringBuilder();
                 buildSingleNpcJson(jsb, actor);
@@ -712,6 +720,7 @@ final class StateSerializer {
                 }
             } catch (Exception ignored) { }
             List<Object[]> collected = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
             int lenX = Array.getLength(planeRow);
             for (int x = 0; x < lenX; x++) {
                 Object col = Array.get(planeRow, x);
@@ -720,7 +729,7 @@ final class StateSerializer {
                 for (int y = 0; y < lenY; y++) {
                     Object tile = Array.get(col, y);
                     if (tile == null) continue;
-                    appendTileObjects(tile, client, collected, playerX, playerY);
+                    appendTileObjects(tile, client, collected, playerX, playerY, seen);
                 }
             }
             Collections.sort(collected, (a, b) -> Double.compare((Double) a[0], (Double) b[0]));
@@ -794,6 +803,7 @@ final class StateSerializer {
                 }
             } catch (Exception ignored) { }
             List<Object[]> collected = new ArrayList<>();
+            Set<String> seen = new HashSet<>();
             int lenX = Array.getLength(planeRow);
             for (int x = 0; x < lenX; x++) {
                 Object col = Array.get(planeRow, x);
@@ -802,7 +812,7 @@ final class StateSerializer {
                 for (int y = 0; y < lenY; y++) {
                     Object tile = Array.get(col, y);
                     if (tile == null) continue;
-                    appendTileGroundItems(tile, collected, playerX, playerY);
+                    appendTileGroundItems(tile, collected, playerX, playerY, seen);
                 }
             }
             Collections.sort(collected, (a, b) -> Double.compare((Double) a[0], (Double) b[0]));
@@ -819,7 +829,7 @@ final class StateSerializer {
         }
     }
 
-    private void appendTileGroundItems(Object tile, List<Object[]> collected, int playerX, int playerY) {
+    private void appendTileGroundItems(Object tile, List<Object[]> collected, int playerX, int playerY, Set<String> seen) {
         try {
             Method getGroundItems = tile.getClass().getMethod("getGroundItems");
             Object itemsObj = getGroundItems.invoke(tile);
@@ -852,6 +862,8 @@ final class StateSerializer {
                     int id = (Integer) item.getClass().getMethod("getId").invoke(item);
                     int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
                     if (id <= 0) continue;
+                    String key = id + "_" + wx + "_" + wy + "_" + plane + "_" + qty;
+                    if (!seen.add(key)) continue;
                     String name = resolveItemName(id);
                     int gePrice = resolveItemGePrice(id);
                     int haPrice = resolveItemHaPrice(id);
@@ -864,24 +876,24 @@ final class StateSerializer {
         } catch (Exception ignored) { }
     }
 
-    private void appendTileObjects(Object tile, Object client, List<Object[]> collected, int playerX, int playerY) {
+    private void appendTileObjects(Object tile, Object client, List<Object[]> collected, int playerX, int playerY, Set<String> seen) {
         try {
             Method getWall = tile.getClass().getMethod("getWallObject");
             Object wall = getWall.invoke(tile);
-            if (wall != null) appendTileObjectJson(collected, wall, "wallObject", client, playerX, playerY);
+            if (wall != null) appendTileObjectJson(collected, wall, "wallObject", client, playerX, playerY, seen);
             Method getGround = tile.getClass().getMethod("getGroundObject");
             Object ground = getGround.invoke(tile);
-            if (ground != null) appendTileObjectJson(collected, ground, "groundObject", client, playerX, playerY);
+            if (ground != null) appendTileObjectJson(collected, ground, "groundObject", client, playerX, playerY, seen);
             Method getDeco = tile.getClass().getMethod("getDecorativeObject");
             Object deco = getDeco.invoke(tile);
-            if (deco != null) appendTileObjectJson(collected, deco, "decorativeObject", client, playerX, playerY);
+            if (deco != null) appendTileObjectJson(collected, deco, "decorativeObject", client, playerX, playerY, seen);
             Method getGameObjs = tile.getClass().getMethod("getGameObjects");
             Object gameObjs = getGameObjs.invoke(tile);
             if (gameObjs != null && gameObjs.getClass().isArray()) {
                 int n = Array.getLength(gameObjs);
                 for (int i = 0; i < n; i++) {
                     Object go = Array.get(gameObjs, i);
-                    if (go != null) appendTileObjectJson(collected, go, "gameObject", client, playerX, playerY);
+                    if (go != null) appendTileObjectJson(collected, go, "gameObject", client, playerX, playerY, seen);
                 }
             }
         } catch (Exception ignored) { }
@@ -890,7 +902,7 @@ final class StateSerializer {
     /** Null/placeholder object IDs to always omit (even if client gives them a name). */
     private static final int[] SKIP_OBJECT_IDS = { 0, 20731, 20737 };
 
-    private void appendTileObjectJson(List<Object[]> collected, Object tileObj, String type, Object client, int playerX, int playerY) {
+    private void appendTileObjectJson(List<Object[]> collected, Object tileObj, String type, Object client, int playerX, int playerY, Set<String> seen) {
         try {
             Method getId = tileObj.getClass().getMethod("getId");
             Object idObj = getId.invoke(tileObj);
@@ -907,6 +919,8 @@ final class StateSerializer {
                 wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
                 plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
             }
+            String key = id + "_" + wx + "_" + wy + "_" + plane;
+            if (!seen.add(key)) return;
             double dist = Math.hypot(wx - playerX, wy - playerY);
             String actionsJson = getObjectActionsJson(client, id);
             String json = "{\"type\":\"" + escape(type) + "\",\"id\":" + id +

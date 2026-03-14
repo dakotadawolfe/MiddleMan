@@ -70,8 +70,12 @@
     .world-object-card:hover { outline: 1px solid #475569; }
     .world-object-card .object-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
     .world-object-card.expanded .object-actions { display: block; }
-    .object-action-link, .npc-action-link, .ground-item-action-link { cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px; }
+    .object-action-link, .npc-action-link, .ground-item-action-link {
+      cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px;
+      -webkit-user-select: none; user-select: none;
+    }
     .object-action-link:hover, .npc-action-link:hover, .ground-item-action-link:hover { color: #bae6fd; }
+    .object-action-link:active, .npc-action-link:active, .ground-item-action-link:active { color: #bae6fd; }
     .object-action-link.sending, .npc-action-link.sending, .ground-item-action-link.sending { pointer-events: none; opacity: 0.7; }
     .ground-item-card { cursor: pointer; user-select: none; }
     .ground-item-card:hover { outline: 1px solid #475569; }
@@ -156,36 +160,84 @@
       }
     }
 
-    /** One-time setup: delegated click handlers on section containers so actions work even when expanded (no re-render). */
+    /** One-time setup: delegated handlers on section containers. Use mousedown (capture) for action links so they always fire. */
     function setupActionDelegation() {
+      function fireObjectAction(link) {
+        if (link.classList.contains('sending')) return;
+        pauseAutoRefresh();
+        link.classList.add('sending');
+        var body = new URLSearchParams({
+          id: link.getAttribute('data-id'),
+          worldX: link.getAttribute('data-world-x'),
+          worldY: link.getAttribute('data-world-y'),
+          plane: link.getAttribute('data-plane') || '0',
+          type: link.getAttribute('data-type') || 'gameObject',
+          actionIndex: link.getAttribute('data-action-index') || '0'
+        });
+        fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            link.classList.remove('sending');
+            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+            else if (data.ok) statusEl.textContent = 'OK';
+          })
+          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+      }
+      function fireNpcAction(link) {
+        if (link.classList.contains('sending')) return;
+        pauseAutoRefresh();
+        link.classList.add('sending');
+        var body = new URLSearchParams({
+          id: link.getAttribute('data-id'),
+          worldX: link.getAttribute('data-world-x'),
+          worldY: link.getAttribute('data-world-y'),
+          plane: link.getAttribute('data-plane') || '0',
+          actionIndex: link.getAttribute('data-action-index') || '0'
+        });
+        fetch(base() + '/game/npc/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            link.classList.remove('sending');
+            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+            else if (data.ok) statusEl.textContent = 'OK';
+          })
+          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+      }
+      function fireGroundItemAction(link) {
+        if (link.classList.contains('sending')) return;
+        pauseAutoRefresh();
+        link.classList.add('sending');
+        var body = new URLSearchParams({
+          id: link.getAttribute('data-id'),
+          worldX: link.getAttribute('data-world-x'),
+          worldY: link.getAttribute('data-world-y'),
+          plane: link.getAttribute('data-plane') || '0',
+          actionIndex: link.getAttribute('data-action-index') || '0'
+        });
+        fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+          .then(function (r) { return r.json(); })
+          .then(function (data) {
+            link.classList.remove('sending');
+            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+            else if (data.ok) statusEl.textContent = 'OK';
+          })
+          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+      }
+
       var woEl = document.getElementById('worldObjects');
       if (woEl) {
-        woEl.addEventListener('click', function (e) {
+        woEl.addEventListener('mousedown', function (e) {
           var link = e.target.closest('.object-action-link');
           if (link) {
             e.preventDefault();
             e.stopPropagation();
-            pauseAutoRefresh();
-            if (link.classList.contains('sending')) return;
-            link.classList.add('sending');
-            var body = new URLSearchParams({
-              id: link.getAttribute('data-id'),
-              worldX: link.getAttribute('data-world-x'),
-              worldY: link.getAttribute('data-world-y'),
-              plane: link.getAttribute('data-plane') || '0',
-              type: link.getAttribute('data-type') || 'gameObject',
-              actionIndex: link.getAttribute('data-action-index') || '0'
-            });
-            fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-              .then(function (r) { return r.json(); })
-              .then(function (data) {
-                link.classList.remove('sending');
-                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-                else if (data.ok) statusEl.textContent = 'OK';
-              })
-              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            fireObjectAction(link);
             return;
           }
+        }, true);
+        woEl.addEventListener('click', function (e) {
+          var link = e.target.closest('.object-action-link');
+          if (link) { e.preventDefault(); e.stopPropagation(); return; }
           var card = e.target.closest('.world-object-card');
           if (card) {
             card.classList.toggle('expanded');
@@ -196,31 +248,18 @@
       }
       var npcEl = document.getElementById('npcs');
       if (npcEl) {
-        npcEl.addEventListener('click', function (e) {
+        npcEl.addEventListener('mousedown', function (e) {
           var link = e.target.closest('.npc-action-link');
           if (link) {
             e.preventDefault();
             e.stopPropagation();
-            pauseAutoRefresh();
-            if (link.classList.contains('sending')) return;
-            link.classList.add('sending');
-            var body = new URLSearchParams({
-              id: link.getAttribute('data-id'),
-              worldX: link.getAttribute('data-world-x'),
-              worldY: link.getAttribute('data-world-y'),
-              plane: link.getAttribute('data-plane') || '0',
-              actionIndex: link.getAttribute('data-action-index') || '0'
-            });
-            fetch(base() + '/game/npc/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-              .then(function (r) { return r.json(); })
-              .then(function (data) {
-                link.classList.remove('sending');
-                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-                else if (data.ok) statusEl.textContent = 'OK';
-              })
-              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            fireNpcAction(link);
             return;
           }
+        }, true);
+        npcEl.addEventListener('click', function (e) {
+          var link = e.target.closest('.npc-action-link');
+          if (link) { e.preventDefault(); e.stopPropagation(); return; }
           var card = e.target.closest('.npc-card');
           if (card) {
             card.classList.toggle('expanded');
@@ -231,31 +270,18 @@
       }
       var giEl = document.getElementById('groundItems');
       if (giEl) {
-        giEl.addEventListener('click', function (e) {
+        giEl.addEventListener('mousedown', function (e) {
           var link = e.target.closest('.ground-item-action-link');
           if (link) {
             e.preventDefault();
             e.stopPropagation();
-            pauseAutoRefresh();
-            if (link.classList.contains('sending')) return;
-            link.classList.add('sending');
-            var body = new URLSearchParams({
-              id: link.getAttribute('data-id'),
-              worldX: link.getAttribute('data-world-x'),
-              worldY: link.getAttribute('data-world-y'),
-              plane: link.getAttribute('data-plane') || '0',
-              actionIndex: link.getAttribute('data-action-index') || '0'
-            });
-            fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-              .then(function (r) { return r.json(); })
-              .then(function (data) {
-                link.classList.remove('sending');
-                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-                else if (data.ok) statusEl.textContent = 'OK';
-              })
-              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            fireGroundItemAction(link);
             return;
           }
+        }, true);
+        giEl.addEventListener('click', function (e) {
+          var link = e.target.closest('.ground-item-action-link');
+          if (link) { e.preventDefault(); e.stopPropagation(); return; }
           var card = e.target.closest('.ground-item-card');
           if (card) {
             card.classList.toggle('expanded');
