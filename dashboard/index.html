@@ -77,6 +77,9 @@
     .npc-card:hover { outline: 1px solid #475569; }
     .npc-card .npc-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
     .npc-card.expanded .npc-actions { display: block; }
+    .item-icon { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: 6px; }
+    .card-with-icon { display: flex; align-items: flex-start; gap: 6px; }
+    .card-with-icon .item-icon { flex-shrink: 0; }
   </style>
 </head>
 <body>
@@ -148,7 +151,15 @@
       const el = document.getElementById('gameState');
       if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
       el.className = '';
-      const mapLine = (d.mapName != null && d.mapName !== '') ? '<br><span style="color:#7dd3fc;font-size:0.9em">Map: ' + escapeHtml(d.mapName) + '</span>' : '';
+      let mapLine = '<br><span style="color:#7dd3fc;font-size:0.9em">';
+      if (d.mapName != null && d.mapName !== '') {
+        mapLine += 'Map: ' + escapeHtml(d.mapName);
+      } else if (d.regionId != null && d.regionId !== '') {
+        mapLine += 'Region: ' + escapeHtml(String(d.regionId));
+      } else {
+        mapLine += 'Map: —';
+      }
+      mapLine += '</span>';
       el.innerHTML = '<strong>' + (d.gameState || '—') + '</strong>' + mapLine;
     }
 
@@ -249,7 +260,9 @@
       el.innerHTML = '<div class="grid">' + filled.map(x => {
         const slot = x.slot != null ? 'Slot ' + x.slot + ': ' : '';
         const namePart = x.name ? x.id + ' (' + x.name + ')' : x.id;
-        return '<div class="card"><strong>' + slot + namePart + '</strong> × ' + (x.quantity ?? 0) + '</div>';
+        const iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        return '<div class="card card-with-icon">' + iconImg + '<div><strong>' + slot + namePart + '</strong> × ' + (x.quantity ?? 0) + '</div></div>';
       }).join('') + '</div>';
     }
 
@@ -343,11 +356,14 @@
         const geStr = (geTotal != null && geTotal > 0) ? 'GE: ' + formatPrice(geTotal) : '';
         const haStr = (haTotal != null && haTotal > 0) ? 'HA: ' + formatPrice(haTotal) : '';
         const valueLine = [geStr, haStr].filter(Boolean).join(' &nbsp; ');
-        return '<div class="card">' +
+        const iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        return '<div class="card card-with-icon">' + iconImg +
+          '<div>' +
           '<strong>' + namePart + qty + '</strong>' +
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
           (valueLine ? '<br><span style="color:#7dd3fc;font-size:11px">' + valueLine + '</span>' : '') +
-          '</div>';
+          '</div></div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
     }
 

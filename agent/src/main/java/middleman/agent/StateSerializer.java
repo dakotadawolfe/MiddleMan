@@ -1,5 +1,8 @@
 package middleman.agent;
 
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayOutputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
@@ -178,6 +181,41 @@ final class StateSerializer {
         } catch (Exception e) {
             sb.append(",\"regionId\":null,\"mapName\":null");
         }
+    }
+
+    /**
+     * Returns PNG bytes for the given item ID, or null if unavailable.
+     * Must be called from a context that can block; runs sprite creation on client thread.
+     */
+    byte[] getItemSpritePng(int itemId) {
+        if (itemId <= 0) return null;
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<byte[]> result = new AtomicReference<>();
+        Runnable runOnClient = () -> {
+            try {
+                Object sprite = createItemSprite(itemId);
+                if (sprite == null) { latch.countDown(); return; }
+                Object img = sprite.getClass().getMethod("toBufferedImage").invoke(sprite);
+                if (!(img instanceof BufferedImage)) { latch.countDown(); return; }
+                ByteArrayOutputStream baos = new ByteArrayOutputStream();
+                ImageIO.write((BufferedImage) img, "PNG", baos);
+                result.set(baos.toByteArray());
+            } catch (Throwable ignored) { }
+            latch.countDown();
+        };
+        try {
+            clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+            if (latch.await(3, TimeUnit.SECONDS)) return result.get();
+        } catch (Throwable ignored) { }
+        return null;
+    }
+
+    private Object createItemSprite(int itemId) {
+        try {
+            Method m = client.getClass().getMethod("createItemSprite", int.class, int.class, int.class, int.class, int.class, boolean.class, int.class);
+            int shadow = 3153952; // SpritePixels.DEFAULT_SHADOW_COLOR
+            return m.invoke(client, itemId, 1, 0, shadow, 0, false, 1);
+        } catch (Throwable e) { return null; }
     }
 
     private void appendLocalPlayer(StringBuilder sb) {

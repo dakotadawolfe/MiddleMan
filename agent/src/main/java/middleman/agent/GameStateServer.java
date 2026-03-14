@@ -65,6 +65,7 @@ final class GameStateServer {
         server.createContext("/game/grounditems", this::handleGroundItems);
         server.createContext("/game/worldobject/action", this::handleWorldObjectAction);
         server.createContext("/game/npc/action", this::handleNpcAction);
+        server.createContext("/game/sprite/item", this::handleItemSprite);
         server.setExecutor(null);
         server.start();
         AgentLog.log("Game state API listening on http://127.0.0.1:" + port);
@@ -125,7 +126,7 @@ final class GameStateServer {
             return;
         }
         String body = "{\"service\":\"MiddleMan\",\"endpoints\":[" +
-                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/dashboard\"]}";
+                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/game/sprite/item/{id}\",\"/dashboard\"]}";
         send(exchange, 200, body);
     }
 
@@ -328,6 +329,50 @@ final class GameStateServer {
         try (OutputStream os = exchange.getResponseBody()) {
             os.write(bytes);
         }
+    }
+
+    private void sendBinary(HttpExchange exchange, int code, byte[] body, String contentType) throws IOException {
+        exchange.getResponseHeaders().set("Content-Type", contentType);
+        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
+        exchange.getResponseHeaders().set("Cache-Control", "max-age=300");
+        exchange.sendResponseHeaders(code, body == null ? 0 : body.length);
+        if (body != null && body.length > 0) {
+            try (OutputStream os = exchange.getResponseBody()) {
+                os.write(body);
+            }
+        }
+    }
+
+    private void handleItemSprite(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+        String path = exchange.getRequestURI().getPath();
+        String prefix = "/game/sprite/item/";
+        if (!path.startsWith(prefix)) {
+            send(exchange, 404, "{\"error\":\"Not found\"}");
+            return;
+        }
+        String idStr = path.substring(prefix.length()).trim();
+        int itemId;
+        try {
+            itemId = Integer.parseInt(idStr);
+        } catch (NumberFormatException e) {
+            send(exchange, 400, "{\"error\":\"Invalid item id\"}");
+            return;
+        }
+        StateSerializer s = serializer;
+        if (s == null) {
+            send(exchange, 503, "{\"error\":\"Client not ready\"}");
+            return;
+        }
+        byte[] png = s.getItemSpritePng(itemId);
+        if (png == null || png.length == 0) {
+            send(exchange, 404, "{\"error\":\"Sprite not found\"}");
+            return;
+        }
+        sendBinary(exchange, 200, png, "image/png");
     }
 
     private static String escape(String s) {
