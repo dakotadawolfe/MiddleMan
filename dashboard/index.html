@@ -70,9 +70,13 @@
     .world-object-card:hover { outline: 1px solid #475569; }
     .world-object-card .object-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
     .world-object-card.expanded .object-actions { display: block; }
-    .object-action-link, .npc-action-link { cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px; }
-    .object-action-link:hover, .npc-action-link:hover { color: #bae6fd; }
-    .object-action-link.sending, .npc-action-link.sending { pointer-events: none; opacity: 0.7; }
+    .object-action-link, .npc-action-link, .ground-item-action-link { cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px; }
+    .object-action-link:hover, .npc-action-link:hover, .ground-item-action-link:hover { color: #bae6fd; }
+    .object-action-link.sending, .npc-action-link.sending, .ground-item-action-link.sending { pointer-events: none; opacity: 0.7; }
+    .ground-item-card { cursor: pointer; user-select: none; }
+    .ground-item-card:hover { outline: 1px solid #475569; }
+    .ground-item-card .ground-item-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
+    .ground-item-card.expanded .ground-item-actions { display: block; }
     .npc-card { cursor: pointer; user-select: none; }
     .npc-card:hover { outline: 1px solid #475569; }
     .npc-card .npc-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
@@ -135,14 +139,18 @@
 
     // Pause auto-refresh while user is using action menus (expand card / click actions). Unpause on click outside.
     window._pauseRefresh = false;
+    function stopAutoRefresh() {
+      if (window._mid) { clearInterval(window._mid); window._mid = null; }
+    }
     function pauseAutoRefresh() {
       window._pauseRefresh = true;
-      if (window._mid) { clearInterval(window._mid); window._mid = null; }
+      stopAutoRefresh();
     }
     function unpauseAutoRefresh() {
       window._pauseRefresh = false;
-      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
+      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded, .ground-item-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
       if (autoEl.checked) {
+        stopAutoRefresh();
         window._mid = setInterval(fetchState, 50);
         fetchState();
       }
@@ -383,6 +391,7 @@
       if (num >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
       return String(num);
     }
+    var GROUND_ITEM_ACTIONS = ['Take', 'Take-5', 'Take-10', 'Take-All'];
     function renderGroundItems(d) {
       const el = document.getElementById('groundItems');
       const arr = d?.groundItems;
@@ -402,13 +411,50 @@
         const valueLine = [geStr, haStr].filter(Boolean).join(' &nbsp; ');
         const iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
         const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
-        return '<div class="card card-with-icon">' + iconImg +
+        const actionsHtml = '<div class="ground-item-actions"><strong>Actions:</strong> ' + GROUND_ITEM_ACTIONS.map((a, idx) =>
+          '<span class="ground-item-action-link" data-id="' + (x.id ?? '') + '" data-world-x="' + (x.worldX ?? '') + '" data-world-y="' + (x.worldY ?? '') + '" data-plane="' + (x.plane ?? '0') + '" data-action-index="' + idx + '">' + escapeHtml(a) + '</span>'
+        ).join(', ') + '</div>';
+        return '<div class="card card-with-icon ground-item-card" tabindex="0">' + iconImg +
           '<div>' +
           '<strong>' + namePart + qty + '</strong>' +
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
           (valueLine ? '<br><span style="color:#7dd3fc;font-size:11px">' + valueLine + '</span>' : '') +
+          actionsHtml +
           '</div></div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.ground-item-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('ground-item-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            pauseAutoRefresh();
+            const link = e.target;
+            if (link.classList.contains('sending')) return;
+            const id = link.getAttribute('data-id');
+            const worldX = link.getAttribute('data-world-x');
+            const worldY = link.getAttribute('data-world-y');
+            const plane = link.getAttribute('data-plane') || '0';
+            const actionIndex = link.getAttribute('data-action-index') || '0';
+            link.classList.add('sending');
+            const body = new URLSearchParams({ id: id, worldX: worldX, worldY: worldY, plane: plane, actionIndex: actionIndex });
+            fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            pauseAutoRefresh();
+          } else {
+            unpauseAutoRefresh();
+          }
+        });
+      });
     }
 
     function escapeHtml(s) {
@@ -421,8 +467,10 @@
       if (window._pauseRefresh) return;
       try {
         const r = await fetch(base() + '/game/state?t=' + Date.now());
+        if (window._pauseRefresh) return;
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const data = await r.json();
+        if (window._pauseRefresh) return;
         setStatus(true);
         var vEl = document.getElementById('agentVersion');
         if (vEl) vEl.textContent = data.agentVersion ? ' (agent ' + data.agentVersion + ')' : ' (agent version unknown — run MiddleMan\\attach-and-open.bat to rebuild & attach; if it still shows unknown, restart RuneLite once then run the bat again)';
@@ -464,22 +512,24 @@
     });
     autoEl.addEventListener('change', function () {
       if (autoEl.checked) {
+        stopAutoRefresh();
         window._mid = setInterval(fetchState, 50);
         fetchState();
       } else {
-        if (window._mid) clearInterval(window._mid);
+        stopAutoRefresh();
       }
     });
 
-    // Click outside world-object / NPC cards: unpause and collapse so auto-refresh resumes
+    // Click outside world-object / NPC / ground-item cards: unpause and collapse so auto-refresh resumes
     document.addEventListener('click', function (e) {
-      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card')) {
+      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card') && !e.target.closest('.ground-item-card')) {
         if (window._pauseRefresh) unpauseAutoRefresh();
       }
     });
 
     fetchState();
     if (autoEl.checked) {
+      stopAutoRefresh();
       window._mid = setInterval(fetchState, 50);
     }
   </script>

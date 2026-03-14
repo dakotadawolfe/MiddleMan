@@ -65,6 +65,7 @@ final class GameStateServer {
         server.createContext("/game/grounditems", this::handleGroundItems);
         server.createContext("/game/worldobject/action", this::handleWorldObjectAction);
         server.createContext("/game/npc/action", this::handleNpcAction);
+        server.createContext("/game/grounditem/action", this::handleGroundItemAction);
         server.createContext("/game/sprite/item", this::handleItemSprite);
         server.setExecutor(null);
         server.start();
@@ -126,7 +127,7 @@ final class GameStateServer {
             return;
         }
         String body = "{\"service\":\"MiddleMan\",\"endpoints\":[" +
-                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/game/sprite/item/{id}\",\"/dashboard\"]}";
+                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/game/grounditem/action\",\"/game/sprite/item/{id}\",\"/dashboard\"]}";
         send(exchange, 200, body);
     }
 
@@ -308,6 +309,46 @@ final class GameStateServer {
                 }
             }
             String err = s.invokeNpcAction(id, worldX, worldY, plane, actionIndex);
+            if (err != null) {
+                send(exchange, 400, "{\"ok\":false,\"error\":\"" + escape(err) + "\"}");
+                return;
+            }
+            send(exchange, 200, "{\"ok\":true}");
+        } catch (NumberFormatException e) {
+            send(exchange, 400, "{\"ok\":false,\"error\":\"Invalid number\"}");
+        } catch (Exception e) {
+            send(exchange, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleGroundItemAction(HttpExchange exchange) throws IOException {
+        if (!"POST".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+        try {
+            StateSerializer s = serializer;
+            if (s == null) {
+                send(exchange, 503, "{\"error\":\"Client not ready\"}");
+                return;
+            }
+            String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
+            int itemId = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0;
+            for (String part : body.split("&")) {
+                int eq = part.indexOf('=');
+                if (eq <= 0) continue;
+                String key = part.substring(0, eq).trim();
+                String val = part.substring(eq + 1).trim();
+                switch (key) {
+                    case "id": case "itemId": itemId = Integer.parseInt(val); break;
+                    case "worldX": worldX = Integer.parseInt(val); break;
+                    case "worldY": worldY = Integer.parseInt(val); break;
+                    case "plane": plane = Integer.parseInt(val); break;
+                    case "actionIndex": actionIndex = Integer.parseInt(val); break;
+                    default: break;
+                }
+            }
+            String err = s.invokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex);
             if (err != null) {
                 send(exchange, 400, "{\"ok\":false,\"error\":\"" + escape(err) + "\"}");
                 return;

@@ -1415,18 +1415,18 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Try 1: scene coords (param0=sceneX, param1=sceneY) - common for tile objects
+        // Try 1: local 1/128 coords (param0=localX, param1=localY) - targets object on tile (e.g. door) not just the tile
         try {
-            menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
+            menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
-            // Try 2: local 1/128 tile coords
+            // Try 2: scene tile coords
             try {
-                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
-                // Try 3: inject via menu entry then invoke (some clients process from current menu)
-                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                // Try 3: inject via menu entry with local coords (precise targeting)
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                 if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
@@ -1561,16 +1561,102 @@ final class StateSerializer {
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
         try {
             menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, npcId, -1, option, target);
+            return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
                 menuActionMethod.invoke(client, localX, localY, menuActionEnum, npcId, -1, option, target);
+                return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, npcId, -1, option, target, menuActionMethod);
+                if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
                 throw e2;
             }
         }
-        return null;
+    }
+
+    /**
+     * Invoke a ground item menu action (e.g. Take, Take-5) on the client thread.
+     * @return null on success, or an error message.
+     */
+    String invokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex) {
+        if (clientThread == null) return "Client not ready";
+        if (itemId <= 0) return "Invalid item id";
+        if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> error = new AtomicReference<>();
+        Runnable runOnClient = () -> {
+            try {
+                String err = doInvokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex);
+                error.set(err);
+            } catch (Throwable t) {
+                error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
+            } finally {
+                latch.countDown();
+            }
+        };
+        try {
+            clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                return "Timeout";
+            }
+            return error.get();
+        } catch (Exception e) {
+            return e.getMessage() != null ? e.getMessage() : "Invoke failed";
+        }
+    }
+
+    private String doInvokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
+        Method getView = client.getClass().getMethod("getTopLevelWorldView");
+        Object view = getView.invoke(client);
+        if (view == null) return "No world view";
+        int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
+        int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
+        Object planeObj = view.getClass().getMethod("getPlane").invoke(view);
+        int viewPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+        int sizeX = 104;
+        int sizeY = 104;
+        try {
+            Method getSizeX = view.getClass().getMethod("getSizeX");
+            Method getSizeY = view.getClass().getMethod("getSizeY");
+            sizeX = (Integer) getSizeX.invoke(view);
+            sizeY = (Integer) getSizeY.invoke(view);
+        } catch (NoSuchMethodException ignored) { }
+        int sceneX = worldX - baseX;
+        int sceneY = worldY - baseY;
+        if (sceneX < 0 || sceneX >= sizeX || sceneY < 0 || sceneY >= sizeY) {
+            return "Item not in current view";
+        }
+        if (viewPlane != plane) return "Wrong plane";
+        final int LOCAL_COORD_BITS = 7;
+        int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        String[] names = { "GROUND_ITEM_FIRST_OPTION", "GROUND_ITEM_SECOND_OPTION", "GROUND_ITEM_THIRD_OPTION", "GROUND_ITEM_FOURTH_OPTION", "GROUND_ITEM_FIFTH_OPTION" };
+        String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        ClassLoader clientLoader = client.getClass().getClassLoader();
+        Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
+        String option = actionIndex == 0 ? "Take" : (actionIndex == 1 ? "Take-5" : (actionIndex == 2 ? "Take-10" : "Take-All"));
+        String target = resolveItemName(itemId);
+        if (target == null) target = "";
+        Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        try {
+            menuActionMethod.invoke(client, localX, localY, menuActionEnum, itemId, -1, option, target);
+            return null;
+        } catch (java.lang.reflect.InvocationTargetException e1) {
+            try {
+                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, itemId, -1, option, target);
+                return null;
+            } catch (java.lang.reflect.InvocationTargetException e2) {
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, itemId, -1, option, target, menuActionMethod);
+                if (err == null) return null;
+                Throwable cause = e2.getCause();
+                if (cause != null) throw new RuntimeException(cause);
+                throw e2;
+            }
+        }
     }
 
     private String resolveNpcName(Object client, int npcId) {
