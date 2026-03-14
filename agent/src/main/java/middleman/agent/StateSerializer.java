@@ -359,7 +359,7 @@ final class StateSerializer {
             if (idObj != null) {
                 int id = ((Number) idObj).intValue();
                 sb.append(",\"npcId\":").append(id);
-                // Resolve NPC name from client's composition (getNpcDefinition / getComposition)
+                // Resolve NPC name and actions from client's composition
                 try {
                     Method getDef = client.getClass().getMethod("getNpcDefinition", int.class);
                     Object comp = getDef.invoke(client, id);
@@ -372,12 +372,61 @@ final class StateSerializer {
                                 sb.append(",\"name\":\"").append(escape(nameStr)).append("\"");
                             }
                         }
+                        sb.append(",\"actions\":").append(getNpcActionsJson(client, id));
                     }
                 } catch (Exception e) {
-                    // Client may use different method names; npcId is still present
+                    sb.append(",\"actions\":[]");
                 }
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    /** Returns JSON array of NPC action strings (e.g. ["Talk-to", "Attack"]). */
+    private String getNpcActionsJson(Object client, int npcId) {
+        if (npcId <= 0) return "[]";
+        try {
+            Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
+            if (getDef == null) return "[]";
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, npcId);
+            if (comp == null) return "[]";
+            Object effective = comp;
+            try {
+                Method transform = comp.getClass().getMethod("transform");
+                Object transformed = transform.invoke(comp);
+                if (transformed != null) effective = transformed;
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException ignored) { }
+            try {
+                Method getImpostorIds = effective.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(effective);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = effective.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(effective);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            int len = Array.getLength(actionsObj);
+            boolean first = true;
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
         }
     }
 
@@ -917,6 +966,122 @@ final class StateSerializer {
         Method menuAction = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
         menuAction.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
         return null;
+    }
+
+    /**
+     * Invoke an NPC menu action on the client thread.
+     * @return null on success, or an error message.
+     */
+    String invokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex) {
+        if (clientThread == null) return "Client not ready";
+        if (npcId <= 0) return "Invalid npc id";
+        if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
+        CountDownLatch latch = new CountDownLatch(1);
+        AtomicReference<String> error = new AtomicReference<>();
+        Runnable runOnClient = () -> {
+            try {
+                String err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex);
+                error.set(err);
+            } catch (Throwable t) {
+                error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
+            } finally {
+                latch.countDown();
+            }
+        };
+        try {
+            clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+            if (!latch.await(3, TimeUnit.SECONDS)) {
+                return "Timeout";
+            }
+            return error.get();
+        } catch (Exception e) {
+            return e.getMessage() != null ? e.getMessage() : "Invoke failed";
+        }
+    }
+
+    /** Must be called on client thread. Returns null on success. */
+    private String doInvokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
+        Method getView = client.getClass().getMethod("getTopLevelWorldView");
+        Object view = getView.invoke(client);
+        if (view == null) return "No world view";
+        int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
+        int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
+        Object planeObj = view.getClass().getMethod("getPlane").invoke(view);
+        int viewPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+        int sizeX = 104;
+        int sizeY = 104;
+        try {
+            Method getSizeX = view.getClass().getMethod("getSizeX");
+            Method getSizeY = view.getClass().getMethod("getSizeY");
+            sizeX = (Integer) getSizeX.invoke(view);
+            sizeY = (Integer) getSizeY.invoke(view);
+        } catch (NoSuchMethodException ignored) { }
+        int sceneX = worldX - baseX;
+        int sceneY = worldY - baseY;
+        if (sceneX < 0 || sceneX >= sizeX || sceneY < 0 || sceneY >= sizeY) {
+            return "NPC not in current view";
+        }
+        if (viewPlane != plane) return "Wrong plane";
+        final int LOCAL_COORD_BITS = 7;
+        int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        String[] names = { "NPC_FIRST_OPTION", "NPC_SECOND_OPTION", "NPC_THIRD_OPTION", "NPC_FOURTH_OPTION", "NPC_FIFTH_OPTION" };
+        String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        ClassLoader clientLoader = client.getClass().getClassLoader();
+        Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
+        Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
+        if (getDef == null) return "No npc definition method";
+        Object comp = getDef.invoke(client, npcId);
+        if (comp == null) return "Unknown npc id";
+        Object effective = comp;
+        try {
+            Method transform = comp.getClass().getMethod("transform");
+            Object transformed = transform.invoke(comp);
+            if (transformed != null) effective = transformed;
+        } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException ignored) { }
+        try {
+            Method getImpostorIds = effective.getClass().getMethod("getImpostorIds");
+            Object ids = getImpostorIds.invoke(effective);
+            if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                Method getImpostor = effective.getClass().getMethod("getImpostor");
+                Object imp = getImpostor.invoke(effective);
+                if (imp != null) effective = imp;
+            }
+        } catch (NoSuchMethodException ignored) { }
+        Method getActions = effective.getClass().getMethod("getActions");
+        Object actionsObj = getActions.invoke(effective);
+        if (actionsObj == null || !actionsObj.getClass().isArray()) return "No actions";
+        int len = Array.getLength(actionsObj);
+        if (actionIndex >= len) return "Invalid action index";
+        Object a = Array.get(actionsObj, actionIndex);
+        String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
+        String target = resolveNpcName(client, npcId);
+        if (target == null) target = "";
+        Method menuAction = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        menuAction.invoke(client, localX, localY, menuActionEnum, npcId, -1, option, target);
+        return null;
+    }
+
+    private String resolveNpcName(Object client, int npcId) {
+        if (npcId <= 0) return "";
+        try {
+            Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
+            if (getDef == null) return "";
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, npcId);
+            if (comp == null) return "";
+            Object effective = comp;
+            try {
+                Method transform = comp.getClass().getMethod("transform");
+                Object transformed = transform.invoke(comp);
+                if (transformed != null) effective = transformed;
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException ignored) { }
+            return getNameFromComposition(effective);
+        } catch (Exception e) {
+            return "";
+        }
     }
 
     private static String escape(String s) {
