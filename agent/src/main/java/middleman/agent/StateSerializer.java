@@ -28,9 +28,12 @@ final class StateSerializer {
         this.itemManager = itemManager;
     }
 
+    /** Prefer version from agent args (passed at attach) so hot-reload shows correct build despite classloader reuse. */
+    static String getAgentVersion() { return MiddleManAgent.getReportedVersion(); }
+
     String serializeFullState() {
         StringBuilder sb = new StringBuilder();
-        sb.append("{");
+        sb.append("{\"agentVersion\":\"").append(escape(MiddleManAgent.getReportedVersion())).append("\",");
         appendGameState(sb);
         sb.append(",\"localPlayer\":");
         appendLocalPlayer(sb);
@@ -189,6 +192,25 @@ final class StateSerializer {
                 int y = (Integer) loc.getClass().getMethod("getY").invoke(loc);
                 int plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
                 sb.append(",\"worldX\":").append(x).append(",\"worldY\":").append(y).append(",\"plane\":").append(plane);
+            } else {
+                // Fallback: world location can be null for some NPCs; use local position so dashboard can show something
+                try {
+                    Method getLocalLocation = actor.getClass().getMethod("getLocalLocation");
+                    Object local = getLocalLocation.invoke(actor);
+                    if (local != null) {
+                        int lx = (Integer) local.getClass().getMethod("getX").invoke(local);
+                        int ly = (Integer) local.getClass().getMethod("getY").invoke(local);
+                        sb.append(",\"localX\":").append(lx).append(",\"localY\":").append(ly);
+                        try {
+                            Method getView = client.getClass().getMethod("getTopLevelWorldView");
+                            Object view = getView.invoke(client);
+                            if (view != null) {
+                                int p = (Integer) view.getClass().getMethod("getPlane").invoke(view);
+                                sb.append(",\"plane\":").append(p);
+                            }
+                        } catch (Exception ignored) { }
+                    }
+                } catch (Exception ignored) { }
             }
 
             Method getAnimation = actor.getClass().getMethod("getAnimation");

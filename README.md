@@ -2,21 +2,20 @@
 
 MiddleMan exposes game state from a running RuneLite client (game state, entities, inventory, camera, etc.) over HTTP **without recompiling RuneLite** and **without changing any files** in the main project. It runs as a Java agent inside the RuneLite JVM and serves JSON on port **8765**.
 
-## Quick start: run the exe
+## Quick start: batch file (simplest)
 
-1. **Build once** (from RuneLite project root):  
-   `MiddleMan\agent\build.bat`  
-   Builds `MiddleMan\agent\build\MiddleManAgent.jar`.
+1. **Start RuneLite** so it can be attached to:  
+   `MiddleMan\launcher\launch-attachable.bat`
 
-2. **Build the exe** (optional):  
-   `MiddleMan\build-exe.bat`  
-   Creates `MiddleMan\MiddleMan.exe`.
+2. **When you want to attach or refresh the agent** (e.g. after code changes):  
+   `MiddleMan\attach-and-open.bat`  
+   This builds the agent, attaches to the running RuneLite (if found), and opens the dashboard. No exe, no JAVA_HOME needed in the exe—just run the bat from a terminal where Java is on PATH (or set JAVA_HOME so `build.bat` finds `javac`).
 
-3. **Use it**
-   - **RuneLite not running:** Double‑click **MiddleMan.exe**. It starts RuneLite with the agent and opens the dashboard.
-   - **RuneLite already running (started with “attachable” launcher):** Double‑click **MiddleMan.exe**. It attaches the agent to that JVM and opens the dashboard.
+## Optional: run the exe
 
-After any changes (e.g. new build of the agent JAR), run the exe again; it just works.
+1. **Build once:** `MiddleMan\agent\build.bat`  
+2. **Build the exe:** `MiddleMan\build-exe.bat` → creates `MiddleMan\MiddleMan.exe`.  
+3. **Use it:** Double‑click **MiddleMan.exe** to start RuneLite with the agent (or attach if RuneLite is already running via launch-attachable.bat) and open the dashboard.
 
 ## Two ways to run RuneLite with MiddleMan
 
