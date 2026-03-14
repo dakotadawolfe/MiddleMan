@@ -74,7 +74,6 @@ del /q "%BUILD_DIR%\MiddleManAgent-*.jar" >nul 2>nul
 :open_dash
 
 echo [3/3] Opening dashboard...
-if defined PID timeout /t 5 /nobreak >nul
 start "" "%~dp0dashboard\index.html"
 echo Done.
 exit /b 0
