@@ -636,7 +636,11 @@ final class StateSerializer {
                     int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
                     if (id <= 0) continue;
                     String name = resolveItemName(id);
-                    String json = "{\"id\":" + id + ",\"quantity\":" + qty + ",\"name\":\"" + escape(name) + "\",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + "}";
+                    int gePrice = resolveItemGePrice(id);
+                    int haPrice = resolveItemHaPrice(id);
+                    long geTotal = (long) gePrice * qty;
+                    long haTotal = (long) haPrice * qty;
+                    String json = "{\"id\":" + id + ",\"quantity\":" + qty + ",\"name\":\"" + escape(name) + "\",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + ",\"gePrice\":" + gePrice + ",\"haPrice\":" + haPrice + ",\"geTotal\":" + geTotal + ",\"haTotal\":" + haTotal + "}";
                     collected.add(new Object[]{ Double.valueOf(dist), json });
                 } catch (Exception ignored) { }
             }
@@ -975,6 +979,33 @@ final class StateSerializer {
             return name != null ? String.valueOf(name) : "";
         } catch (Exception e) {
             return "";
+        }
+    }
+
+    /** GE (or wiki) price per item via ItemManager (must be called on client thread). Returns 0 if unavailable. */
+    private int resolveItemGePrice(int itemId) {
+        if (itemManager == null || itemId <= 0) return 0;
+        try {
+            Method getPrice = itemManager.getClass().getMethod("getItemPrice", int.class);
+            Object price = getPrice.invoke(itemManager, itemId);
+            return price != null ? ((Number) price).intValue() : 0;
+        } catch (Exception e) {
+            return 0;
+        }
+    }
+
+    /** High alchemy price per item from ItemComposition (must be called on client thread). Returns 0 if unavailable. */
+    private int resolveItemHaPrice(int itemId) {
+        if (itemManager == null || itemId <= 0) return 0;
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return 0;
+            Method getHaPrice = comp.getClass().getMethod("getHaPrice");
+            Object price = getHaPrice.invoke(comp);
+            return price != null ? ((Number) price).intValue() : 0;
+        } catch (Exception e) {
+            return 0;
         }
     }
 

@@ -318,6 +318,13 @@
       });
     }
 
+    function formatPrice(n) {
+      if (n == null || n === undefined || Number.isNaN(n)) return '—';
+      const num = Number(n);
+      if (num >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'm';
+      if (num >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+      return String(num);
+    }
     function renderGroundItems(d) {
       const el = document.getElementById('groundItems');
       const arr = d?.groundItems;
@@ -330,9 +337,15 @@
         const qty = x.quantity != null ? ' × ' + x.quantity : '';
         const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
         const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
+        const geTotal = x.geTotal != null ? x.geTotal : (x.gePrice != null && x.quantity != null ? x.gePrice * x.quantity : null);
+        const haTotal = x.haTotal != null ? x.haTotal : (x.haPrice != null && x.quantity != null ? x.haPrice * x.quantity : null);
+        const geStr = (geTotal != null && geTotal > 0) ? 'GE: ' + formatPrice(geTotal) : '';
+        const haStr = (haTotal != null && haTotal > 0) ? 'HA: ' + formatPrice(haTotal) : '';
+        const valueLine = [geStr, haStr].filter(Boolean).join(' &nbsp; ');
         return '<div class="card">' +
           '<strong>' + namePart + qty + '</strong>' +
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          (valueLine ? '<br><span style="color:#7dd3fc;font-size:11px">' + valueLine + '</span>' : '') +
           '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
     }
