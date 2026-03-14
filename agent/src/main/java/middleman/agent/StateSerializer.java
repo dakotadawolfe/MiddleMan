@@ -4,8 +4,10 @@ import java.lang.reflect.Array;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicReference;
@@ -15,6 +17,57 @@ import java.util.concurrent.atomic.AtomicReference;
  * All RuneLite types are accessed by name; no compile-time dependency.
  */
 final class StateSerializer {
+
+    /** Region ID to display name (from player world position). Region ID = ((x>>6)<<8)|(y>>6). */
+    private static final Map<Integer, String> REGION_NAMES = new HashMap<>();
+    static {
+        REGION_NAMES.put(12850, "Lumbridge");
+        REGION_NAMES.put(13105, "Al Kharid"); REGION_NAMES.put(13106, "Al Kharid");
+        REGION_NAMES.put(12596, "Varrock"); REGION_NAMES.put(12597, "Varrock");
+        REGION_NAMES.put(12852, "Varrock"); REGION_NAMES.put(12853, "Varrock"); REGION_NAMES.put(12854, "Varrock");
+        REGION_NAMES.put(13108, "Varrock"); REGION_NAMES.put(13109, "Varrock"); REGION_NAMES.put(13110, "Varrock");
+        REGION_NAMES.put(11828, "Falador"); REGION_NAMES.put(11572, "Falador"); REGION_NAMES.put(11827, "Falador"); REGION_NAMES.put(12084, "Falador");
+        REGION_NAMES.put(12342, "Edgeville");
+        REGION_NAMES.put(12338, "Draynor"); REGION_NAMES.put(12339, "Draynor");
+        REGION_NAMES.put(12341, "Barbarian Village");
+        REGION_NAMES.put(12081, "Port Sarim"); REGION_NAMES.put(12082, "Port Sarim");
+        REGION_NAMES.put(11826, "Rimmington"); REGION_NAMES.put(11570, "Rimmington");
+        REGION_NAMES.put(11574, "Taverley"); REGION_NAMES.put(11573, "Taverley");
+        REGION_NAMES.put(11319, "Burthorpe"); REGION_NAMES.put(11575, "Burthorpe");
+        REGION_NAMES.put(11317, "Catherby"); REGION_NAMES.put(11318, "Catherby"); REGION_NAMES.put(11061, "Catherby");
+        REGION_NAMES.put(10806, "Seers' Village");
+        REGION_NAMES.put(10297, "Rellekka"); REGION_NAMES.put(10553, "Rellekka");
+        REGION_NAMES.put(9779, "Ardougne"); REGION_NAMES.put(9780, "Ardougne"); REGION_NAMES.put(10035, "Ardougne"); REGION_NAMES.put(10036, "Ardougne");
+        REGION_NAMES.put(10291, "Ardougne"); REGION_NAMES.put(10292, "Ardougne"); REGION_NAMES.put(10547, "Ardougne"); REGION_NAMES.put(10548, "Ardougne");
+        REGION_NAMES.put(11057, "Brimhaven"); REGION_NAMES.put(11058, "Brimhaven");
+        REGION_NAMES.put(13878, "Canifis");
+        REGION_NAMES.put(9525, "Tree Gnome Stronghold"); REGION_NAMES.put(9526, "Tree Gnome Stronghold"); REGION_NAMES.put(9782, "Tree Gnome Stronghold"); REGION_NAMES.put(9781, "Tree Gnome Stronghold");
+        REGION_NAMES.put(10033, "Tree Gnome Village");
+        REGION_NAMES.put(10288, "Yanille"); REGION_NAMES.put(10032, "Yanille");
+        REGION_NAMES.put(9265, "Lletya"); REGION_NAMES.put(11103, "Lletya");
+        REGION_NAMES.put(8253, "Lunar Isle"); REGION_NAMES.put(8252, "Lunar Isle"); REGION_NAMES.put(8509, "Lunar Isle"); REGION_NAMES.put(8508, "Lunar Isle");
+        REGION_NAMES.put(8499, "Prifddinas"); REGION_NAMES.put(8500, "Prifddinas"); REGION_NAMES.put(8755, "Prifddinas"); REGION_NAMES.put(8756, "Prifddinas");
+        REGION_NAMES.put(9011, "Prifddinas"); REGION_NAMES.put(9012, "Prifddinas"); REGION_NAMES.put(9013, "Prifddinas");
+        REGION_NAMES.put(12894, "Prifddinas"); REGION_NAMES.put(12895, "Prifddinas"); REGION_NAMES.put(13150, "Prifddinas"); REGION_NAMES.put(13151, "Prifddinas");
+        REGION_NAMES.put(6458, "Arceuus"); REGION_NAMES.put(6459, "Arceuus"); REGION_NAMES.put(6460, "Arceuus"); REGION_NAMES.put(6714, "Arceuus"); REGION_NAMES.put(6715, "Arceuus");
+        REGION_NAMES.put(6710, "Hosidius"); REGION_NAMES.put(6711, "Hosidius"); REGION_NAMES.put(6712, "Hosidius"); REGION_NAMES.put(6455, "Hosidius"); REGION_NAMES.put(6456, "Hosidius");
+        REGION_NAMES.put(6969, "Port Piscarilius"); REGION_NAMES.put(6971, "Port Piscarilius"); REGION_NAMES.put(7227, "Port Piscarilius"); REGION_NAMES.put(6970, "Port Piscarilius"); REGION_NAMES.put(7225, "Port Piscarilius"); REGION_NAMES.put(7226, "Port Piscarilius");
+        REGION_NAMES.put(5692, "Lovakengj"); REGION_NAMES.put(5691, "Lovakengj"); REGION_NAMES.put(5947, "Lovakengj"); REGION_NAMES.put(6203, "Lovakengj"); REGION_NAMES.put(6202, "Lovakengj"); REGION_NAMES.put(5690, "Lovakengj"); REGION_NAMES.put(5946, "Lovakengj");
+        REGION_NAMES.put(5944, "Shayzien"); REGION_NAMES.put(5943, "Shayzien"); REGION_NAMES.put(6200, "Shayzien"); REGION_NAMES.put(6199, "Shayzien"); REGION_NAMES.put(5686, "Shayzien"); REGION_NAMES.put(5687, "Shayzien"); REGION_NAMES.put(5688, "Shayzien"); REGION_NAMES.put(5689, "Shayzien"); REGION_NAMES.put(5945, "Shayzien");
+        REGION_NAMES.put(6462, "Wintertodt");
+        REGION_NAMES.put(9023, "Vorkath");
+        REGION_NAMES.put(9007, "Zulrah");
+        REGION_NAMES.put(14679, "Motherlode Mine"); REGION_NAMES.put(14680, "Motherlode Mine"); REGION_NAMES.put(14681, "Motherlode Mine"); REGION_NAMES.put(14935, "Motherlode Mine"); REGION_NAMES.put(14936, "Motherlode Mine"); REGION_NAMES.put(14937, "Motherlode Mine");
+        REGION_NAMES.put(11347, "General Graardor"); REGION_NAMES.put(11602, "Commander Zilyana"); REGION_NAMES.put(11603, "K'ril Tsutsaroth"); REGION_NAMES.put(11346, "Kree'arra");
+        REGION_NAMES.put(11588, "Dagannoth Kings"); REGION_NAMES.put(11589, "Dagannoth Kings");
+        REGION_NAMES.put(11842, "Corporeal Beast"); REGION_NAMES.put(11844, "Corporeal Beast");
+        REGION_NAMES.put(12843, "Menaphos");
+        REGION_NAMES.put(13874, "Burgh de Rott"); REGION_NAMES.put(13873, "Burgh de Rott"); REGION_NAMES.put(14130, "Burgh de Rott"); REGION_NAMES.put(14129, "Burgh de Rott");
+        REGION_NAMES.put(14646, "Port Phasmatys");
+        REGION_NAMES.put(14388, "Darkmeyer"); REGION_NAMES.put(14644, "Darkmeyer");
+        REGION_NAMES.put(12076, "Tempoross");
+        REGION_NAMES.put(12700, "Ferox Enclave");
+    }
 
     private final Object client;
     private final Object clientThread;
@@ -33,6 +86,7 @@ final class StateSerializer {
         StringBuilder sb = new StringBuilder();
         sb.append("{\"agentVersion\":\"").append(escape(getAgentVersion())).append("\",");
         appendGameState(sb);
+        appendMapInfo(sb);
         sb.append(",\"localPlayer\":");
         appendLocalPlayer(sb);
         sb.append(",\"players\":");
@@ -93,6 +147,36 @@ final class StateSerializer {
             sb.append("\"gameState\":\"").append(escape(name)).append("\"");
         } catch (Exception e) {
             sb.append("\"gameState\":null,\"error\":\"").append(escape(e.getMessage())).append("\"");
+        }
+    }
+
+    /** Appends ,"regionId":N,"mapName":"..." from local player's world position. */
+    private void appendMapInfo(StringBuilder sb) {
+        try {
+            Method getPlayer = client.getClass().getMethod("getLocalPlayer");
+            Object player = getPlayer.invoke(client);
+            if (player == null) {
+                sb.append(",\"regionId\":null,\"mapName\":null");
+                return;
+            }
+            Method getLoc = player.getClass().getMethod("getWorldLocation");
+            Object worldLoc = getLoc.invoke(player);
+            if (worldLoc == null) {
+                sb.append(",\"regionId\":null,\"mapName\":null");
+                return;
+            }
+            int x = ((Number) worldLoc.getClass().getMethod("getX").invoke(worldLoc)).intValue();
+            int y = ((Number) worldLoc.getClass().getMethod("getY").invoke(worldLoc)).intValue();
+            int regionId = ((x >> 6) << 8) | (y >> 6);
+            String mapName = REGION_NAMES.get(regionId);
+            sb.append(",\"regionId\":").append(regionId).append(",\"mapName\":");
+            if (mapName != null) {
+                sb.append("\"").append(escape(mapName)).append("\"");
+            } else {
+                sb.append("null");
+            }
+        } catch (Exception e) {
+            sb.append(",\"regionId\":null,\"mapName\":null");
         }
     }
 

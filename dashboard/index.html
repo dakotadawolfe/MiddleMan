@@ -148,7 +148,8 @@
       const el = document.getElementById('gameState');
       if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
       el.className = '';
-      el.innerHTML = '<strong>' + (d.gameState || '—') + '</strong>';
+      const mapLine = (d.mapName != null && d.mapName !== '') ? '<br><span style="color:#7dd3fc;font-size:0.9em">Map: ' + escapeHtml(d.mapName) + '</span>' : '';
+      el.innerHTML = '<strong>' + (d.gameState || '—') + '</strong>' + mapLine;
     }
 
     function renderLocalPlayer(d) {
