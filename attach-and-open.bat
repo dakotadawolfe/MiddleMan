@@ -22,12 +22,10 @@ set BUILDERR=!errorlevel!
 cd /d "%~dp0\.."
 if not "!BUILDERR!"=="0" (
     echo Build failed. Make sure JAVA_HOME is set to your JDK.
-    pause
     exit /b 1
 )
 if not exist "!JAR!" (
     echo Agent JAR not found at !JAR!
-    pause
     exit /b 1
 )
 echo Built and will attach: !JAR!
@@ -76,4 +74,4 @@ echo [3/3] Opening dashboard...
 if defined PID timeout /t 5 /nobreak >nul
 start "" "%~dp0dashboard\index.html"
 echo Done.
-pause
+exit /b 0
