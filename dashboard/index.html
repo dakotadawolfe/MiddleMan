@@ -215,7 +215,7 @@
       const maxShow = 80;
       el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
         const type = x.type || 'object';
-        const idPart = x.name ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
+        const idPart = (x.name && x.name !== 'null') ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
         const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
         const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
         return '<div class="card"><strong>' + type + ': ' + idPart + '</strong>' + (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') + '</div>';
