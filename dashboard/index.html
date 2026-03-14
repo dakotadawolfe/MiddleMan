@@ -93,6 +93,10 @@
     <div id="npcs" class="empty">—</div>
   </section>
   <section>
+    <h2>World objects <span style="font-weight:400;color:#64748b;font-size:0.75rem">(doors, stairs, game objects, walls, ground, decorative)</span></h2>
+    <div id="worldObjects" class="empty">—</div>
+  </section>
+  <section>
     <h2>World view</h2>
     <div id="worldView" class="empty">—</div>
   </section>
@@ -202,6 +206,22 @@
       el.innerHTML = '<div class="card">x: ' + c.x + ' y: ' + c.y + ' z: ' + c.z + '<br>pitch: ' + c.pitch + ' yaw: ' + c.yaw + '</div>';
     }
 
+    function renderWorldObjects(d) {
+      const el = document.getElementById('worldObjects');
+      const arr = d?.worldObjects;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      const maxShow = 80;
+      el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
+        const type = x.type || 'object';
+        const idPart = x.name ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
+        const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
+        const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
+        return '<div class="card"><strong>' + type + ': ' + idPart + '</strong>' + (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') + '</div>';
+      }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+    }
+
     async function fetchState() {
       try {
         const r = await fetch(base() + '/game/state?t=' + Date.now());
@@ -214,6 +234,7 @@
         renderLocalPlayer(data);
         renderList('players', data.players, ['name', 'worldX', 'worldY', 'combatLevel']);
         renderNpcs(data);
+        renderWorldObjects(data);
         renderWorldView(data);
         renderInventory(data);
         renderCamera(data);
@@ -227,10 +248,11 @@
         document.getElementById('localPlayer').textContent = '—';
         document.getElementById('players').textContent = '—';
         document.getElementById('npcs').textContent = '—';
+        document.getElementById('worldObjects').textContent = '—';
         document.getElementById('worldView').textContent = '—';
         document.getElementById('inventory').textContent = '—';
         document.getElementById('camera').textContent = '—';
-        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
+        [].forEach.call(document.querySelectorAll('#localPlayer, #players, #npcs, #worldObjects, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
       }
     }
 

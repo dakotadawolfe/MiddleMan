@@ -61,6 +61,7 @@ final class GameStateServer {
         server.createContext("/game/state/simple", this::handleGameStateOnly);
         server.createContext("/game/players", this::handlePlayers);
         server.createContext("/game/npcs", this::handleNpcs);
+        server.createContext("/game/worldobjects", this::handleWorldObjects);
         server.setExecutor(null);
         server.start();
         AgentLog.log("Game state API listening on http://127.0.0.1:" + port);
@@ -121,7 +122,7 @@ final class GameStateServer {
             return;
         }
         String body = "{\"service\":\"MiddleMan\",\"endpoints\":[" +
-                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/dashboard\"]}";
+                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/dashboard\"]}";
         send(exchange, 200, body);
     }
 
@@ -191,6 +192,24 @@ final class GameStateServer {
                 return;
             }
             String json = "{\"npcs\":" + s.serializeNpcs() + "}";
+            send(exchange, 200, json);
+        } catch (Exception e) {
+            send(exchange, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");
+        }
+    }
+
+    private void handleWorldObjects(HttpExchange exchange) throws IOException {
+        if (!"GET".equals(exchange.getRequestMethod())) {
+            send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
+            return;
+        }
+        try {
+            StateSerializer s = serializer;
+            if (s == null) {
+                send(exchange, 503, "{\"error\":\"Client not ready\"}");
+                return;
+            }
+            String json = "{\"worldObjects\":" + s.serializeWorldObjects() + "}";
             send(exchange, 200, json);
         } catch (Exception e) {
             send(exchange, 500, "{\"error\":\"" + escape(e.getMessage()) + "\"}");

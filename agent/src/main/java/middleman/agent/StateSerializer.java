@@ -36,6 +36,8 @@ final class StateSerializer {
         appendPlayers(sb);
         sb.append(",\"npcs\":");
         appendNpcs(sb);
+        sb.append(",\"worldObjects\":");
+        appendWorldObjects(sb);
         sb.append(",\"worldView\":");
         appendWorldView(sb);
         sb.append(",\"inventory\":");
@@ -63,6 +65,12 @@ final class StateSerializer {
     String serializeNpcs() {
         StringBuilder sb = new StringBuilder();
         appendNpcs(sb);
+        return sb.toString();
+    }
+
+    String serializeWorldObjects() {
+        StringBuilder sb = new StringBuilder();
+        appendWorldObjects(sb);
         return sb.toString();
     }
 
@@ -252,6 +260,144 @@ final class StateSerializer {
                 }
             }
         } catch (Exception ignored) {
+        }
+    }
+
+    private void appendWorldObjects(StringBuilder sb) {
+        if (clientThread != null) {
+            CountDownLatch latch = new CountDownLatch(1);
+            AtomicReference<String> holder = new AtomicReference<>();
+            Runnable runOnClient = () -> {
+                try {
+                    holder.set(buildWorldObjectsJson());
+                } finally {
+                    latch.countDown();
+                }
+            };
+            try {
+                clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
+                if (latch.await(2, TimeUnit.SECONDS) && holder.get() != null) {
+                    sb.append(holder.get());
+                    return;
+                }
+            } catch (Throwable ignored) { }
+            sb.append("[]");
+            return;
+        }
+        sb.append("[]");
+    }
+
+    /** Must be called on client thread. Returns JSON array of world objects (doors, stairs, game objects, etc.). */
+    private String buildWorldObjectsJson() {
+        try {
+            Method getView = client.getClass().getMethod("getTopLevelWorldView");
+            Object view = getView.invoke(client);
+            if (view == null) return "[]";
+            Method getScene = view.getClass().getMethod("getScene");
+            Object scene = getScene.invoke(view);
+            if (scene == null) return "[]";
+            Method getTiles = scene.getClass().getMethod("getTiles");
+            Object tilesObj = getTiles.invoke(scene);
+            if (tilesObj == null || !tilesObj.getClass().isArray()) return "[]";
+            int planes = Array.getLength(tilesObj);
+            StringBuilder out = new StringBuilder();
+            out.append("[");
+            boolean[] first = { true };
+            for (int p = 0; p < planes; p++) {
+                Object planeRow = Array.get(tilesObj, p);
+                if (planeRow == null || !planeRow.getClass().isArray()) continue;
+                int lenX = Array.getLength(planeRow);
+                for (int x = 0; x < lenX; x++) {
+                    Object col = Array.get(planeRow, x);
+                    if (col == null || !col.getClass().isArray()) continue;
+                    int lenY = Array.getLength(col);
+                    for (int y = 0; y < lenY; y++) {
+                        Object tile = Array.get(col, y);
+                        if (tile == null) continue;
+                        appendTileObjects(tile, client, out, first);
+                    }
+                }
+            }
+            out.append("]");
+            return out.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    private void appendTileObjects(Object tile, Object client, StringBuilder out, boolean[] first) {
+        try {
+            Method getWall = tile.getClass().getMethod("getWallObject");
+            Object wall = getWall.invoke(tile);
+            if (wall != null) {
+                if (!first[0]) out.append(",");
+                appendTileObjectJson(out, wall, "wallObject", client);
+                first[0] = false;
+            }
+            Method getGround = tile.getClass().getMethod("getGroundObject");
+            Object ground = getGround.invoke(tile);
+            if (ground != null) {
+                if (!first[0]) out.append(",");
+                appendTileObjectJson(out, ground, "groundObject", client);
+                first[0] = false;
+            }
+            Method getDeco = tile.getClass().getMethod("getDecorativeObject");
+            Object deco = getDeco.invoke(tile);
+            if (deco != null) {
+                if (!first[0]) out.append(",");
+                appendTileObjectJson(out, deco, "decorativeObject", client);
+                first[0] = false;
+            }
+            Method getGameObjs = tile.getClass().getMethod("getGameObjects");
+            Object gameObjs = getGameObjs.invoke(tile);
+            if (gameObjs != null && gameObjs.getClass().isArray()) {
+                int n = Array.getLength(gameObjs);
+                for (int i = 0; i < n; i++) {
+                    Object go = Array.get(gameObjs, i);
+                    if (go != null) {
+                        if (!first[0]) out.append(",");
+                        appendTileObjectJson(out, go, "gameObject", client);
+                        first[0] = false;
+                    }
+                }
+            }
+        } catch (Exception ignored) { }
+    }
+
+    private void appendTileObjectJson(StringBuilder out, Object tileObj, String type, Object client) {
+        try {
+            Method getId = tileObj.getClass().getMethod("getId");
+            Object idObj = getId.invoke(tileObj);
+            int id = idObj != null ? ((Number) idObj).intValue() : -1;
+            String name = resolveObjectName(client, id);
+            Method getWorldLoc = tileObj.getClass().getMethod("getWorldLocation");
+            Object loc = getWorldLoc.invoke(tileObj);
+            int wx = 0, wy = 0, plane = 0;
+            if (loc != null) {
+                wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                plane = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+            }
+            out.append("{\"type\":\"").append(escape(type)).append("\",\"id\":").append(id);
+            if (!name.isEmpty()) out.append(",\"name\":\"").append(escape(name)).append("\"");
+            out.append(",\"worldX\":").append(wx).append(",\"worldY\":").append(wy).append(",\"plane\":").append(plane);
+            out.append("}");
+        } catch (Exception e) {
+            out.append("{\"type\":\"").append(escape(type)).append("\",\"error\":\"").append(escape(e.getMessage() != null ? e.getMessage() : "")).append("\"}");
+        }
+    }
+
+    private String resolveObjectName(Object client, int objectId) {
+        if (objectId <= 0) return "";
+        try {
+            Method getDef = client.getClass().getMethod("getObjectDefinition", int.class);
+            Object comp = getDef.invoke(client, objectId);
+            if (comp == null) return "";
+            Method getName = comp.getClass().getMethod("getName");
+            Object name = getName.invoke(comp);
+            return name != null ? String.valueOf(name) : "";
+        } catch (Exception e) {
+            return "";
         }
     }
 
