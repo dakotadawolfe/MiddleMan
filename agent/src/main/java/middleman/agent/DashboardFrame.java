@@ -34,7 +34,8 @@ public final class DashboardFrame {
     private final AtomicBoolean loading = new AtomicBoolean(false);
     private volatile String npcSearchFilter = "";
     private volatile String worldObjectSearchFilter = "";
-    private final Set<String> expandedSections = new HashSet<>();
+    /** Section id -> true if expanded, false if collapsed. If absent, use section default. */
+    private final Map<String, Boolean> sectionExpanded = new HashMap<>();
 
     private DashboardFrame(int port) {
         this.port = port;
@@ -599,7 +600,7 @@ public final class DashboardFrame {
     }
 
     private void addSection(String title, JComponent content, boolean collapsedByDefault) {
-        boolean expanded = expandedSections.contains(title) || !collapsedByDefault;
+        boolean expanded = sectionExpanded.containsKey(title) ? sectionExpanded.get(title) : !collapsedByDefault;
         Color bg = new Color(0x1a, 0x1a, 0x1e);
         Color border = new Color(0x33, 0x33, 0x33);
         Color titleFg = new Color(0x94, 0xa3, 0xb8);
@@ -617,12 +618,17 @@ public final class DashboardFrame {
         titleLabel.setForeground(titleFg);
         header.add(arrow);
         header.add(titleLabel);
-        content.setVisible(expanded);
+        final boolean defaultExpanded = !collapsedByDefault;
         Runnable toggle = () -> {
-            boolean nowVisible = content.isVisible();
-            content.setVisible(!nowVisible);
-            if (content.isVisible()) expandedSections.add(title); else expandedSections.remove(title);
-            arrow.setText(content.isVisible() ? "\u25BC" : "\u25B2");
+            boolean nowExpanded = sectionExpanded.getOrDefault(title, defaultExpanded);
+            boolean newExpanded = !nowExpanded;
+            sectionExpanded.put(title, newExpanded);
+            arrow.setText(newExpanded ? "\u25BC" : "\u25B2");
+            if (newExpanded) {
+                wrap.add(content, BorderLayout.CENTER);
+            } else {
+                wrap.remove(content);
+            }
             wrap.revalidate();
             wrap.repaint();
         };
@@ -634,7 +640,7 @@ public final class DashboardFrame {
         arrow.addMouseListener(adapter);
         titleLabel.addMouseListener(adapter);
         wrap.add(header, BorderLayout.NORTH);
-        wrap.add(content, BorderLayout.CENTER);
+        if (expanded) wrap.add(content, BorderLayout.CENTER);
         contentPanel.add(wrap);
         contentPanel.add(Box.createVerticalStrut(2));
     }
