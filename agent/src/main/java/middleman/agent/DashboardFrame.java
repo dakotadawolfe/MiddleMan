@@ -99,6 +99,7 @@ public final class DashboardFrame {
         JPanel toolbar = new JPanel(new FlowLayout(FlowLayout.LEFT, 8, 4));
         toolbar.setBackground(bg);
         portField = new JTextField(String.valueOf(port), 6);
+        portField.putClientProperty("focus.id", "port");
         portField.setBackground(new Color(0x2d, 0x2d, 0x33));
         portField.setForeground(fg);
         portField.setCaretColor(fg);
@@ -169,6 +170,7 @@ public final class DashboardFrame {
     }
 
     private void applyState(String json) {
+        String focusId = getCurrentFocusId();
         contentPanel.removeAll();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         try {
@@ -188,6 +190,43 @@ public final class DashboardFrame {
         }
         contentPanel.revalidate();
         contentPanel.repaint();
+        if (focusId != null) {
+            SwingUtilities.invokeLater(() -> restoreFocus(focusId));
+        }
+    }
+
+    private String getCurrentFocusId() {
+        Component c = KeyboardFocusManager.getCurrentKeyboardFocusManager().getFocusOwner();
+        while (c != null) {
+            if (c instanceof JComponent) {
+                Object id = ((JComponent) c).getClientProperty("focus.id");
+                if (id instanceof String) return (String) id;
+            }
+            c = c.getParent();
+        }
+        return null;
+    }
+
+    private void restoreFocus(String focusId) {
+        Component target = findComponentWithFocusId(frame, focusId);
+        if (target != null && target.isDisplayable()) target.requestFocusInWindow();
+    }
+
+    private Component findComponentWithFocusId(Container root, String focusId) {
+        if (root instanceof JComponent) {
+            Object id = ((JComponent) root).getClientProperty("focus.id");
+            if (focusId.equals(id)) return root;
+        }
+        for (Component child : root.getComponents()) {
+            if (child instanceof Container) {
+                Component found = findComponentWithFocusId((Container) child, focusId);
+                if (found != null) return found;
+            } else if (child instanceof JComponent) {
+                Object id = ((JComponent) child).getClientProperty("focus.id");
+                if (focusId.equals(id)) return child;
+            }
+        }
+        return null;
     }
 
     private JPanel gameStateSection(JsonObj root) {
@@ -343,6 +382,7 @@ public final class DashboardFrame {
         JPanel outer = new JPanel(new BorderLayout(2, 2));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
         JTextField search = new JTextField(14);
+        search.putClientProperty("focus.id", "npcSearch");
         search.setText(npcSearchFilter);
         search.setToolTipText("Filter by ID or name");
         search.setBackground(new Color(0x2d, 0x2d, 0x33));
@@ -444,6 +484,7 @@ public final class DashboardFrame {
         JPanel outer = new JPanel(new BorderLayout(2, 2));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
         JTextField search = new JTextField(14);
+        search.putClientProperty("focus.id", "worldObjectSearch");
         search.setText(worldObjectSearchFilter);
         search.setToolTipText("Filter by ID or name");
         search.setBackground(new Color(0x2d, 0x2d, 0x33));
@@ -609,13 +650,14 @@ public final class DashboardFrame {
         wrap.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, border));
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         header.setBackground(bg);
-        header.setBorder(new EmptyBorder(2, 6, 2, 6));
+        header.setBorder(new EmptyBorder(1, 4, 1, 4));
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
         JLabel arrow = new JLabel(expanded ? "\u25BC" : "\u25B2");
         arrow.setForeground(titleFg);
-        arrow.setFont(arrow.getFont().deriveFont(10f));
+        arrow.setFont(arrow.getFont().deriveFont(9f));
         JLabel titleLabel = new JLabel(title);
         titleLabel.setForeground(titleFg);
+        titleLabel.setFont(titleLabel.getFont().deriveFont(11f));
         header.add(arrow);
         header.add(titleLabel);
         final boolean defaultExpanded = !collapsedByDefault;
@@ -642,7 +684,7 @@ public final class DashboardFrame {
         wrap.add(header, BorderLayout.NORTH);
         if (expanded) wrap.add(content, BorderLayout.CENTER);
         contentPanel.add(wrap);
-        contentPanel.add(Box.createVerticalStrut(2));
+        contentPanel.add(Box.createVerticalStrut(0));
     }
 
     private void setStatus(boolean ok, String msg) {
