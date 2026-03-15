@@ -141,157 +141,6 @@
     const autoEl = document.getElementById('auto');
     const statusEl = document.getElementById('status');
 
-    // Pause auto-refresh while user is using action menus (expand card / click actions). Unpause on click outside.
-    window._pauseRefresh = false;
-    function stopAutoRefresh() {
-      if (window._mid) { clearInterval(window._mid); window._mid = null; }
-    }
-    function pauseAutoRefresh() {
-      window._pauseRefresh = true;
-      stopAutoRefresh();
-    }
-    function unpauseAutoRefresh() {
-      window._pauseRefresh = false;
-      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded, .ground-item-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
-      if (autoEl.checked) {
-        stopAutoRefresh();
-        window._mid = setInterval(fetchState, 50);
-        fetchState();
-      }
-    }
-
-    /** One-time setup: delegated handlers on section containers. Use mousedown (capture) for action links so they always fire. */
-    function setupActionDelegation() {
-      function fireObjectAction(link) {
-        if (link.classList.contains('sending')) return;
-        pauseAutoRefresh();
-        link.classList.add('sending');
-        var body = new URLSearchParams({
-          id: link.getAttribute('data-id'),
-          worldX: link.getAttribute('data-world-x'),
-          worldY: link.getAttribute('data-world-y'),
-          plane: link.getAttribute('data-plane') || '0',
-          type: link.getAttribute('data-type') || 'gameObject',
-          actionIndex: link.getAttribute('data-action-index') || '0'
-        });
-        fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            link.classList.remove('sending');
-            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-            else if (data.ok) statusEl.textContent = 'OK';
-          })
-          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
-      }
-      function fireNpcAction(link) {
-        if (link.classList.contains('sending')) return;
-        pauseAutoRefresh();
-        link.classList.add('sending');
-        var body = new URLSearchParams({
-          id: link.getAttribute('data-id'),
-          worldX: link.getAttribute('data-world-x'),
-          worldY: link.getAttribute('data-world-y'),
-          plane: link.getAttribute('data-plane') || '0',
-          actionIndex: link.getAttribute('data-action-index') || '0'
-        });
-        fetch(base() + '/game/npc/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            link.classList.remove('sending');
-            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-            else if (data.ok) statusEl.textContent = 'OK';
-          })
-          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
-      }
-      function fireGroundItemAction(link) {
-        if (link.classList.contains('sending')) return;
-        pauseAutoRefresh();
-        link.classList.add('sending');
-        var body = new URLSearchParams({
-          id: link.getAttribute('data-id'),
-          worldX: link.getAttribute('data-world-x'),
-          worldY: link.getAttribute('data-world-y'),
-          plane: link.getAttribute('data-plane') || '0',
-          actionIndex: link.getAttribute('data-action-index') || '0'
-        });
-        fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
-          .then(function (r) { return r.json(); })
-          .then(function (data) {
-            link.classList.remove('sending');
-            if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
-            else if (data.ok) statusEl.textContent = 'OK';
-          })
-          .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
-      }
-
-      var woEl = document.getElementById('worldObjects');
-      if (woEl) {
-        woEl.addEventListener('mousedown', function (e) {
-          var link = e.target.closest('.object-action-link');
-          if (link) {
-            e.preventDefault();
-            e.stopPropagation();
-            fireObjectAction(link);
-            return;
-          }
-        }, true);
-        woEl.addEventListener('click', function (e) {
-          var link = e.target.closest('.object-action-link');
-          if (link) { e.preventDefault(); e.stopPropagation(); return; }
-          var card = e.target.closest('.world-object-card');
-          if (card) {
-            card.classList.toggle('expanded');
-            if (card.classList.contains('expanded')) pauseAutoRefresh();
-            else unpauseAutoRefresh();
-          }
-        });
-      }
-      var npcEl = document.getElementById('npcs');
-      if (npcEl) {
-        npcEl.addEventListener('mousedown', function (e) {
-          var link = e.target.closest('.npc-action-link');
-          if (link) {
-            e.preventDefault();
-            e.stopPropagation();
-            fireNpcAction(link);
-            return;
-          }
-        }, true);
-        npcEl.addEventListener('click', function (e) {
-          var link = e.target.closest('.npc-action-link');
-          if (link) { e.preventDefault(); e.stopPropagation(); return; }
-          var card = e.target.closest('.npc-card');
-          if (card) {
-            card.classList.toggle('expanded');
-            if (card.classList.contains('expanded')) pauseAutoRefresh();
-            else unpauseAutoRefresh();
-          }
-        });
-      }
-      var giEl = document.getElementById('groundItems');
-      if (giEl) {
-        giEl.addEventListener('mousedown', function (e) {
-          var link = e.target.closest('.ground-item-action-link');
-          if (link) {
-            e.preventDefault();
-            e.stopPropagation();
-            fireGroundItemAction(link);
-            return;
-          }
-        }, true);
-        giEl.addEventListener('click', function (e) {
-          var link = e.target.closest('.ground-item-action-link');
-          if (link) { e.preventDefault(); e.stopPropagation(); return; }
-          var card = e.target.closest('.ground-item-card');
-          if (card) {
-            card.classList.toggle('expanded');
-            if (card.classList.contains('expanded')) pauseAutoRefresh();
-            else unpauseAutoRefresh();
-          }
-        });
-      }
-    }
-
     function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
 
     const loadStartTime = Date.now();
@@ -391,6 +240,39 @@
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
           actionsHtml + '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.npc-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('npc-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/npc/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            if (window._mid) { clearInterval(window._mid); window._mid = null; }
+          } else if (autoEl.checked) {
+            window._mid = setInterval(fetchState, 50);
+          }
+        });
+      });
     }
 
     function renderWorldView(d) {
@@ -451,6 +333,40 @@
           (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
           actionsHtml + '</div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.world-object-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('object-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              type: link.getAttribute('data-type') || 'gameObject',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            if (window._mid) { clearInterval(window._mid); window._mid = null; }
+          } else if (autoEl.checked) {
+            window._mid = setInterval(fetchState, 50);
+          }
+        });
+      });
     }
 
     function formatPrice(n) {
@@ -491,6 +407,39 @@
           actionsHtml +
           '</div></div>';
       }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.ground-item-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('ground-item-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            if (window._mid) { clearInterval(window._mid); window._mid = null; }
+          } else if (autoEl.checked) {
+            window._mid = setInterval(fetchState, 50);
+          }
+        });
+      });
     }
 
     function escapeHtml(s) {
@@ -500,13 +449,10 @@
     }
 
     async function fetchState() {
-      if (window._pauseRefresh) return;
       try {
         const r = await fetch(base() + '/game/state?t=' + Date.now());
-        if (window._pauseRefresh) return;
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const data = await r.json();
-        if (window._pauseRefresh) return;
         setStatus(true);
         var vEl = document.getElementById('agentVersion');
         if (vEl) vEl.textContent = data.agentVersion ? ' (agent ' + data.agentVersion + ')' : ' (agent version unknown — run MiddleMan\\attach-and-open.bat to rebuild & attach; if it still shows unknown, restart RuneLite once then run the bat again)';
@@ -540,33 +486,18 @@
       }
     }
 
-    refreshEl.addEventListener('click', function () {
-      var wasPaused = window._pauseRefresh;
-      window._pauseRefresh = false;
-      fetchState();
-      if (wasPaused) window._pauseRefresh = true;
-    });
+    refreshEl.addEventListener('click', fetchState);
     autoEl.addEventListener('change', function () {
       if (autoEl.checked) {
-        stopAutoRefresh();
         window._mid = setInterval(fetchState, 50);
         fetchState();
       } else {
-        stopAutoRefresh();
+        if (window._mid) { clearInterval(window._mid); window._mid = null; }
       }
     });
 
-    // Click outside world-object / NPC / ground-item cards: unpause and collapse so auto-refresh resumes
-    document.addEventListener('click', function (e) {
-      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card') && !e.target.closest('.ground-item-card')) {
-        if (window._pauseRefresh) unpauseAutoRefresh();
-      }
-    });
-
-    setupActionDelegation();
     fetchState();
     if (autoEl.checked) {
-      stopAutoRefresh();
       window._mid = setInterval(fetchState, 50);
     }
   </script>
