@@ -617,6 +617,14 @@ public final class DashboardFrame {
         }).start();
     }
 
+    /** Format price for display (e.g. 1500 -> "1.5k", 1500000 -> "1.5m"). */
+    private static String formatPrice(long n) {
+        if (n <= 0) return "—";
+        if (n >= 1_000_000) return (n / 1_000_000.0) == (long)(n / 1_000_000.0) ? (n / 1_000_000) + "m" : String.format("%.1fm", n / 1_000_000.0).replace(".0m", "m");
+        if (n >= 1_000) return (n / 1_000.0) == (long)(n / 1_000.0) ? (n / 1_000) + "k" : String.format("%.1fk", n / 1_000.0).replace(".0k", "k");
+        return String.valueOf(n);
+    }
+
     private JPanel groundItemSection(JsonArr arr) {
         JPanel outer = new JPanel();
         outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
@@ -630,14 +638,37 @@ public final class DashboardFrame {
             String name = o.getString("name");
             int qty = o.getInt("quantity", 1);
             int wx = o.getInt("worldX", 0), wy = o.getInt("worldY", 0), plane = o.getInt("plane", 0);
+            long geTotal = o.getLong("geTotal", -1);
+            if (geTotal < 0) {
+                int gePrice = o.getInt("gePrice", 0);
+                geTotal = gePrice > 0 && qty > 0 ? (long) gePrice * qty : 0;
+            }
+            long haTotal = o.getLong("haTotal", -1);
+            if (haTotal < 0) {
+                int haPrice = o.getInt("haPrice", 0);
+                haTotal = haPrice > 0 && qty > 0 ? (long) haPrice * qty : 0;
+            }
             JPanel card = new JPanel(new BorderLayout(2, 2));
             card.setBackground(new Color(0x1e, 0x1e, 0x24));
             card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
             JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
             top.setBackground(new Color(0x1e, 0x1e, 0x24));
+            top.setLayout(new BoxLayout(top, BoxLayout.Y_AXIS));
             JLabel sum = new JLabel((id != null ? id : "") + (name != null ? " " + name : "") + " × " + qty + "  @ " + wx + "," + wy + " " + plane);
             sum.setForeground(new Color(0xe0, 0xe0, 0xe0));
             top.add(sum);
+            if (geTotal > 0 || haTotal > 0) {
+                StringBuilder valueLine = new StringBuilder();
+                if (geTotal > 0) valueLine.append("GE: ").append(formatPrice(geTotal));
+                if (haTotal > 0) {
+                    if (valueLine.length() > 0) valueLine.append("   ");
+                    valueLine.append("HA: ").append(formatPrice(haTotal));
+                }
+                JLabel valueLbl = new JLabel(valueLine.toString());
+                valueLbl.setForeground(new Color(0x7d, 0xd3, 0xfc));
+                valueLbl.setFont(valueLbl.getFont().deriveFont(11f));
+                top.add(valueLbl);
+            }
             card.add(top, BorderLayout.NORTH);
             JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
             btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
@@ -792,6 +823,13 @@ public final class DashboardFrame {
             if (v == null) return def;
             if (v instanceof Number) return ((Number) v).intValue();
             try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return def; }
+        }
+
+        long getLong(String key, long def) {
+            Object v = map.get(key);
+            if (v == null) return def;
+            if (v instanceof Number) return ((Number) v).longValue();
+            try { return Long.parseLong(v.toString()); } catch (NumberFormatException e) { return def; }
         }
 
         JsonObj getObject(String key) {

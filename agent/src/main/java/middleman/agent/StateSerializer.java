@@ -1618,6 +1618,96 @@ final class StateSerializer {
         }
     }
 
+    /**
+     * Must be called on client thread. Finds a TileObject in the scene matching (objectId, worldX, worldY, plane, type)
+     * and returns its local coords [localX, localY] for menuAction, or null if not found.
+     * This ensures we target the actual object instance (including multi-tile objects) instead of a bare tile.
+     */
+    private int[] findWorldTileObjectLocalCoords(Object view, int objectId, int worldX, int worldY, int plane, String type) {
+        try {
+            Method getScene = view.getClass().getMethod("getScene");
+            Object scene = getScene.invoke(view);
+            if (scene == null) return null;
+            Object planeObj = view.getClass().getMethod("getPlane").invoke(view);
+            int currentPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+            if (currentPlane != plane) return null;
+            Method getTiles = scene.getClass().getMethod("getTiles");
+            Object tilesObj = getTiles.invoke(scene);
+            if (tilesObj == null || !tilesObj.getClass().isArray()) return null;
+            int planes = Array.getLength(tilesObj);
+            if (currentPlane < 0 || currentPlane >= planes) return null;
+            Object planeRow = Array.get(tilesObj, currentPlane);
+            if (planeRow == null || !planeRow.getClass().isArray()) return null;
+            int lenX = Array.getLength(planeRow);
+            for (int x = 0; x < lenX; x++) {
+                Object col = Array.get(planeRow, x);
+                if (col == null || !col.getClass().isArray()) continue;
+                int lenY = Array.getLength(col);
+                for (int y = 0; y < lenY; y++) {
+                    Object tile = Array.get(col, y);
+                    if (tile == null) continue;
+                    Object tileObj = null;
+                    if ("wallObject".equals(type)) {
+                        Method m = tile.getClass().getMethod("getWallObject");
+                        tileObj = m.invoke(tile);
+                    } else if ("groundObject".equals(type)) {
+                        Method m = tile.getClass().getMethod("getGroundObject");
+                        tileObj = m.invoke(tile);
+                    } else if ("decorativeObject".equals(type)) {
+                        Method m = tile.getClass().getMethod("getDecorativeObject");
+                        tileObj = m.invoke(tile);
+                    } else if ("gameObject".equals(type)) {
+                        Method getGameObjs = tile.getClass().getMethod("getGameObjects");
+                        Object gameObjs = getGameObjs.invoke(tile);
+                        if (gameObjs != null && gameObjs.getClass().isArray()) {
+                            int n = Array.getLength(gameObjs);
+                            for (int i = 0; i < n; i++) {
+                                Object go = Array.get(gameObjs, i);
+                                if (go != null) {
+                                    Object idObj = go.getClass().getMethod("getId").invoke(go);
+                                    int id = idObj != null ? ((Number) idObj).intValue() : -1;
+                                    if (id == objectId) {
+                                        Object loc = go.getClass().getMethod("getWorldLocation").invoke(go);
+                                        if (loc != null) {
+                                            int wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                                            int wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                                            int p = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+                                            if (wx == worldX && wy == worldY && p == plane) {
+                                                tileObj = go;
+                                                break;
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    if (tileObj == null) continue;
+                    if ("gameObject".equals(type) && tileObj != null) { /* already matched above */ }
+                    else {
+                        Object idObj = tileObj.getClass().getMethod("getId").invoke(tileObj);
+                        int id = idObj != null ? ((Number) idObj).intValue() : -1;
+                        if (id != objectId) continue;
+                        Object loc = tileObj.getClass().getMethod("getWorldLocation").invoke(tileObj);
+                        if (loc != null) {
+                            int wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                            int wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                            int p = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+                            if (wx != worldX || wy != worldY || p != plane) continue;
+                        }
+                    }
+                    Method getLocalLoc = tileObj.getClass().getMethod("getLocalLocation");
+                    Object localPoint = getLocalLoc.invoke(tileObj);
+                    if (localPoint == null) return null;
+                    int lx = (Integer) localPoint.getClass().getMethod("getX").invoke(localPoint);
+                    int ly = (Integer) localPoint.getClass().getMethod("getY").invoke(localPoint);
+                    return new int[] { lx, ly };
+                }
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     /** Must be called on client thread. Returns null on success. */
     private String doInvokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
@@ -1644,6 +1734,12 @@ final class StateSerializer {
         final int LOCAL_COORD_BITS = 7;
         int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
         int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        // Prefer exact TileObject from scene so multi-tile objects and entity identity are correct
+        int[] fromScene = findWorldTileObjectLocalCoords(view, objectId, worldX, worldY, plane, type);
+        if (fromScene != null) {
+            localX = fromScene[0];
+            localY = fromScene[1];
+        }
         String menuActionName;
         if ("gameObject".equals(type)) {
             String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
