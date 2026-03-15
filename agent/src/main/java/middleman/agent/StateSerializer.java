@@ -1739,13 +1739,16 @@ final class StateSerializer {
             localX = fromScene[0];
             localY = fromScene[1];
         }
+        // Same menu-order fix as NPCs: client display order can differ from composition getActions() order.
+        // Map composition index 0→FIRST, 1→THIRD, 2→FOURTH, 3→FIFTH so the intended option fires.
+        int menuActionIndex = actionIndex == 0 ? 0 : Math.min(actionIndex + 1, 4);
         String menuActionName;
         if ("gameObject".equals(type)) {
             String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+            menuActionName = names[menuActionIndex];
         } else {
             String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+            menuActionName = names[menuActionIndex];
         }
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
