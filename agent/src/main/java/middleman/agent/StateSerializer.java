@@ -1756,7 +1756,6 @@ final class StateSerializer {
         int[] fromScene = findWorldTileObjectInScene(view, objectId, worldX, worldY, plane, type);
         int localSwX = localX;
         int localSwY = localY;
-        int objectIdentifier = objectId;
         if (fromScene != null) {
             localX = fromScene[0];
             localY = fromScene[1];
@@ -1764,7 +1763,9 @@ final class StateSerializer {
                 localSwX = fromScene[2];
                 localSwY = fromScene[3];
             }
-            if (fromScene.length >= 5 && fromScene[4] != 0) objectIdentifier = fromScene[4]; // hash id
+        }
+        else {
+            return "Object instance not found";
         }
         // World objects: use direct mapping (no +1 shift).
         String menuActionName;
@@ -1803,45 +1804,27 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Use resolved object identity (hash) and object center so we click the object, not the tile.
-        int p0 = fromScene != null ? localX : sceneX;
-        int p1 = fromScene != null ? localY : sceneY;
-        String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, p0, p1, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
-        if (err == null) return null;
-        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
-        if (err == null) return null;
-        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localSwX, localSwY, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
-        if (err == null) return null;
+        // Strict object-based interaction: use resolved object coordinates only.
+        int p0 = localX;
+        int p1 = localY;
         try {
-            menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectIdentifier, -1, option, target);
+            menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectIdentifier, -1, option, target);
+                menuActionMethod.invoke(client, localSwX, localSwY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
                 try {
-                    menuActionMethod.invoke(client, localSwX, localSwY, menuActionEnum, objectIdentifier, -1, option, target);
-                    return null;
-                } catch (java.lang.reflect.InvocationTargetException e3) {
-                    if (objectIdentifier != objectId) {
-                        try {
-                            menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectId, -1, option, target);
-                            return null;
-                        } catch (java.lang.reflect.InvocationTargetException e4) {
-                            try {
-                                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
-                                return null;
-                            } catch (java.lang.reflect.InvocationTargetException e5) {
-                                Throwable cause = e5.getCause();
-                                if (cause != null) throw new RuntimeException(cause);
-                                throw e5;
-                            }
-                        }
-                    }
-                    Throwable cause = e3.getCause();
+                    String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, p0, p1, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                    if (err == null) return null;
+                    err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localSwX, localSwY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                    if (err == null) return null;
+                    return err;
+                } catch (Exception e3) {
+                    Throwable cause = e2.getCause();
                     if (cause != null) throw new RuntimeException(cause);
-                    throw e3;
+                    throw e2;
                 }
             }
         }
@@ -1865,14 +1848,23 @@ final class StateSerializer {
             entry.getClass().getMethod("setTarget", String.class).invoke(entry, target);
             entry.getClass().getMethod("setType", menuActionClass).invoke(entry, menuActionEnum);
             entry.getClass().getMethod("setItemId", int.class).invoke(entry, itemId);
+            // Keep entry scoped to the top-level world view when supported.
+            try {
+                Object view = client.getClass().getMethod("getTopLevelWorldView").invoke(client);
+                if (view != null) {
+                    Object idObj = view.getClass().getMethod("getId").invoke(view);
+                    int worldViewId = idObj != null ? ((Number) idObj).intValue() : -1;
+                    entry.getClass().getMethod("setWorldViewId", int.class).invoke(entry, worldViewId);
+                }
+            } catch (NoSuchMethodException ignored) { }
             Class<?> entryArrayClass = Array.newInstance(entry.getClass(), 0).getClass();
             Method setEntries = menu.getClass().getMethod("setMenuEntries", entryArrayClass);
             Object entryArray = Array.newInstance(entry.getClass(), 1);
             Array.set(entryArray, 0, entry);
             setEntries.invoke(menu, entryArray);
-            int p0 = (Integer) entry.getClass().getMethod("getParam0").invoke(entry);
-            int p1 = (Integer) entry.getClass().getMethod("getParam1").invoke(entry);
-            menuActionMethod.invoke(client, p0, p1, menuActionEnum, identifier, itemId, option, target);
+            int p0i = (Integer) entry.getClass().getMethod("getParam0").invoke(entry);
+            int p1i = (Integer) entry.getClass().getMethod("getParam1").invoke(entry);
+            menuActionMethod.invoke(client, p0i, p1i, menuActionEnum, identifier, itemId, option, target);
             return null;
         } catch (Exception e) {
             return e.getMessage() != null ? e.getMessage() : e.getClass().getSimpleName();
