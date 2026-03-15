@@ -468,6 +468,7 @@ public final class DashboardFrame {
         String name = o.getString(nameKey);
         int wx = o.getInt(wxKey, 0), wy = o.getInt(wyKey, 0), plane = o.getInt(planeKey, 0);
         JsonArr actions = o.getArray(actionsKey);
+        JsonArr actionSlots = o.getArray("actionSlots");
         JPanel card = new JPanel(new BorderLayout(2, 2));
         card.setBackground(new Color(0x1e, 0x1e, 0x24));
         card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
@@ -484,11 +485,12 @@ public final class DashboardFrame {
                 String action = actions.getString(a);
                 if (action == null || action.isEmpty()) continue;
                 final int actionIndex = a;
+                final int rawActionIndex = getActionSlot(actionSlots, a, a);
                 JButton btn = new JButton(action);
                 btn.setFocusPainted(false);
                 btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
                 btn.setForeground(Color.WHITE);
-                btn.addActionListener(ev -> postNpcOrGroundAction(actionType, id, wx, wy, plane, actionIndex, btn));
+                btn.addActionListener(ev -> postNpcOrGroundAction(actionType, id, wx, wy, plane, actionIndex, rawActionIndex, btn));
                 btnRow.add(btn);
             }
             card.add(btnRow, BorderLayout.CENTER);
@@ -496,9 +498,9 @@ public final class DashboardFrame {
         return card;
     }
 
-    private void postNpcOrGroundAction(String type, String id, int wx, int wy, int plane, int actionIndex, JButton btn) {
+    private void postNpcOrGroundAction(String type, String id, int wx, int wy, int plane, int actionIndex, int rawActionIndex, JButton btn) {
         String path = type.equals("npc") ? "/game/npc/action" : "/game/grounditem/action";
-        String body = "id=" + id + "&worldX=" + wx + "&worldY=" + wy + "&plane=" + plane + "&actionIndex=" + actionIndex;
+        String body = "id=" + id + "&worldX=" + wx + "&worldY=" + wy + "&plane=" + plane + "&actionIndex=" + actionIndex + "&rawActionIndex=" + rawActionIndex;
         btn.setEnabled(false);
         new Thread(() -> {
             try {
@@ -571,6 +573,7 @@ public final class DashboardFrame {
         String name = o.getString("name");
         int wx = o.getInt("worldX", 0), wy = o.getInt("worldY", 0), plane = o.getInt("plane", 0);
         JsonArr actions = o.getArray("actions");
+        JsonArr actionSlots = o.getArray("actionSlots");
         JPanel card = new JPanel(new BorderLayout(2, 2));
         card.setBackground(new Color(0x1e, 0x1e, 0x24));
         card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
@@ -588,11 +591,12 @@ public final class DashboardFrame {
                 String action = actions.getString(a);
                 if (action == null || action.isEmpty()) continue;
                 final int actionIndex = a;
+                final int rawActionIndex = getActionSlot(actionSlots, a, a);
                 JButton btn = new JButton(action);
                 btn.setFocusPainted(false);
                 btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
                 btn.setForeground(Color.WHITE);
-                btn.addActionListener(ev -> postWorldObjectAction(id, wx, wy, plane, typeStr, actionIndex, btn));
+                btn.addActionListener(ev -> postWorldObjectAction(id, wx, wy, plane, typeStr, actionIndex, rawActionIndex, btn));
                 btnRow.add(btn);
             }
             card.add(btnRow, BorderLayout.CENTER);
@@ -600,8 +604,8 @@ public final class DashboardFrame {
         return card;
     }
 
-    private void postWorldObjectAction(String id, int wx, int wy, int plane, String type, int actionIndex, JButton btn) {
-        String body = "id=" + id + "&worldX=" + wx + "&worldY=" + wy + "&plane=" + plane + "&type=" + type + "&actionIndex=" + actionIndex;
+    private void postWorldObjectAction(String id, int wx, int wy, int plane, String type, int actionIndex, int rawActionIndex, JButton btn) {
+        String body = "id=" + id + "&worldX=" + wx + "&worldY=" + wy + "&plane=" + plane + "&type=" + type + "&actionIndex=" + actionIndex + "&rawActionIndex=" + rawActionIndex;
         btn.setEnabled(false);
         new Thread(() -> {
             try {
@@ -681,7 +685,7 @@ public final class DashboardFrame {
                 btn.setFocusPainted(false);
                 btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
                 btn.setForeground(Color.WHITE);
-                btn.addActionListener(ev -> postNpcOrGroundAction("grounditem", id, wx, wy, plane, actionIndex, btn));
+                btn.addActionListener(ev -> postNpcOrGroundAction("grounditem", id, wx, wy, plane, actionIndex, actionIndex, btn));
                 btnRow.add(btn);
             }
             card.add(btnRow, BorderLayout.CENTER);
@@ -707,6 +711,11 @@ public final class DashboardFrame {
         lbl.setForeground(new Color(0xe0, 0xe0, 0xe0));
         p.add(lbl);
         return p;
+    }
+
+    private int getActionSlot(JsonArr actionSlots, int displayIndex, int fallbackRaw) {
+        if (actionSlots == null) return fallbackRaw;
+        return actionSlots.getInt(displayIndex, fallbackRaw);
     }
 
     private void addSection(String title, JComponent content, boolean collapsedByDefault) {
@@ -890,6 +899,13 @@ public final class DashboardFrame {
         String getString(int i) {
             Object v = get(i);
             return v != null ? v.toString() : null;
+        }
+
+        int getInt(int i, int def) {
+            Object v = get(i);
+            if (v == null) return def;
+            if (v instanceof Number) return ((Number) v).intValue();
+            try { return Integer.parseInt(v.toString()); } catch (NumberFormatException e) { return def; }
         }
     }
 

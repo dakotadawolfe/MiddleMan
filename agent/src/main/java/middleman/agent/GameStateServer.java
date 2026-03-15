@@ -234,7 +234,7 @@ final class GameStateServer {
                 return;
             }
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            int id = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0;
+            int id = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0, rawActionIndex = -1;
             String type = "gameObject";
             for (String part : body.split("&")) {
                 int eq = part.indexOf('=');
@@ -247,11 +247,12 @@ final class GameStateServer {
                     case "worldY": worldY = Integer.parseInt(val); break;
                     case "plane": plane = Integer.parseInt(val); break;
                     case "actionIndex": actionIndex = Integer.parseInt(val); break;
+                    case "rawActionIndex": rawActionIndex = Integer.parseInt(val); break;
                     case "type": type = val; break;
                     default: break;
                 }
             }
-            String err = s.invokeWorldObjectAction(id, worldX, worldY, plane, type, actionIndex);
+            String err = s.invokeWorldObjectAction(id, worldX, worldY, plane, type, actionIndex, rawActionIndex);
             if (err != null) {
                 send(exchange, 400, "{\"ok\":false,\"error\":\"" + escape(err) + "\"}");
                 return;
@@ -276,7 +277,7 @@ final class GameStateServer {
                 return;
             }
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            int id = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0;
+            int id = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0, rawActionIndex = -1;
             for (String part : body.split("&")) {
                 int eq = part.indexOf('=');
                 if (eq <= 0) continue;
@@ -288,10 +289,11 @@ final class GameStateServer {
                     case "worldY": worldY = Integer.parseInt(val); break;
                     case "plane": plane = Integer.parseInt(val); break;
                     case "actionIndex": actionIndex = Integer.parseInt(val); break;
+                    case "rawActionIndex": rawActionIndex = Integer.parseInt(val); break;
                     default: break;
                 }
             }
-            String err = s.invokeNpcAction(id, worldX, worldY, plane, actionIndex);
+            String err = s.invokeNpcAction(id, worldX, worldY, plane, actionIndex, rawActionIndex);
             if (err != null) {
                 send(exchange, 400, "{\"ok\":false,\"error\":\"" + escape(err) + "\"}");
                 return;

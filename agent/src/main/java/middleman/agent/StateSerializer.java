@@ -3,8 +3,11 @@ package middleman.agent;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.FileOutputStream;
 import java.lang.reflect.Array;
 import java.lang.reflect.Method;
+import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -22,6 +25,8 @@ import java.util.concurrent.atomic.AtomicReference;
  * All RuneLite types are accessed by name; no compile-time dependency.
  */
 final class StateSerializer {
+    private static final String DEBUG_LOG_PATH = "debug-d5c511.log";
+    private static final String DEBUG_SESSION_ID = "d5c511";
 
     /** Region ID to display name (from player world position). Region ID = ((x>>6)<<8)|(y>>6). */
     private static final Map<Integer, String> REGION_NAMES = new HashMap<>();
@@ -857,9 +862,11 @@ final class StateSerializer {
                             }
                         }
                         sb.append(",\"actions\":").append(getNpcActionsJson(client, id));
+                        sb.append(",\"actionSlots\":").append(getNpcActionSlotsJson(client, id));
                     }
                 } catch (Exception e) {
                     sb.append(",\"actions\":[]");
+                    sb.append(",\"actionSlots\":[]");
                 }
             }
         } catch (Exception ignored) {
@@ -904,6 +911,54 @@ final class StateSerializer {
                         if (!first) sb.append(",");
                         first = false;
                         sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** Returns JSON array of raw NPC action slots for each serialized action label (e.g. [0,2,3]). */
+    private String getNpcActionSlotsJson(Object client, int npcId) {
+        if (npcId <= 0) return "[]";
+        try {
+            Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
+            if (getDef == null) return "[]";
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, npcId);
+            if (comp == null) return "[]";
+            Object effective = comp;
+            try {
+                Method transform = comp.getClass().getMethod("transform");
+                Object transformed = transform.invoke(comp);
+                if (transformed != null) effective = transformed;
+            } catch (NoSuchMethodException | java.lang.reflect.InvocationTargetException ignored) { }
+            try {
+                Method getImpostorIds = effective.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(effective);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = effective.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(effective);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            int len = Array.getLength(actionsObj);
+            boolean first = true;
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append(i);
                     }
                 }
             }
@@ -1174,10 +1229,12 @@ final class StateSerializer {
             if (!seen.add(key)) return;
             double dist = Math.hypot(wx - playerX, wy - playerY);
             String actionsJson = getObjectActionsJson(client, id);
+            String actionSlotsJson = getObjectActionSlotsJson(client, id);
             String json = "{\"type\":\"" + escape(type) + "\",\"id\":" + id +
                 ",\"name\":\"" + escape(name) + "\"" +
                 ",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane +
-                ",\"actions\":" + actionsJson + "}";
+                ",\"actions\":" + actionsJson +
+                ",\"actionSlots\":" + actionSlotsJson + "}";
             collected.add(new Object[]{ Double.valueOf(dist), json });
         } catch (Exception ignored) { }
     }
@@ -1214,6 +1271,49 @@ final class StateSerializer {
                         if (!first) sb.append(",");
                         first = false;
                         sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** Returns JSON array of raw object action slots for each serialized action label (e.g. [1,2]). */
+    private String getObjectActionSlotsJson(Object client, int objectId) {
+        if (objectId <= 0) return "[]";
+        try {
+            Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
+            if (getDef == null) return "[]";
+            getDef.setAccessible(true);
+            Object comp = getDef.invoke(client, objectId);
+            if (comp == null) return "[]";
+            Object effective = comp;
+            try {
+                Method getImpostorIds = comp.getClass().getMethod("getImpostorIds");
+                Object ids = getImpostorIds.invoke(comp);
+                if (ids != null && ids.getClass().isArray() && Array.getLength(ids) > 0) {
+                    Method getImpostor = comp.getClass().getMethod("getImpostor");
+                    Object imp = getImpostor.invoke(comp);
+                    if (imp != null) effective = imp;
+                }
+            } catch (NoSuchMethodException ignored) { }
+            Method getActions = effective.getClass().getMethod("getActions");
+            Object actionsObj = getActions.invoke(effective);
+            if (actionsObj == null || !actionsObj.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            int len = Array.getLength(actionsObj);
+            boolean first = true;
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(actionsObj, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append(i);
                     }
                 }
             }
@@ -1591,7 +1691,7 @@ final class StateSerializer {
      * Invoke a world object menu action on the client thread.
      * @return null on success, or an error message.
      */
-    String invokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex) {
+    String invokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex, int rawActionIndex) {
         if (clientThread == null) return "Client not ready";
         if (objectId <= 0) return "Invalid object id";
         if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
@@ -1599,7 +1699,7 @@ final class StateSerializer {
         AtomicReference<String> error = new AtomicReference<>();
         Runnable runOnClient = () -> {
             try {
-                String err = doInvokeWorldObjectAction(objectId, worldX, worldY, plane, type, actionIndex);
+                String err = doInvokeWorldObjectAction(objectId, worldX, worldY, plane, type, actionIndex, rawActionIndex);
                 error.set(err);
             } catch (Throwable t) {
                 error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
@@ -1620,7 +1720,7 @@ final class StateSerializer {
 
     /**
      * Must be called on client thread. Finds a TileObject in the scene matching (objectId, worldX, worldY, plane, type)
-     * and returns [centerLocalX, centerLocalY, swLocalX, swLocalY, swSceneX, swSceneY] for menuAction, or null.
+     * and returns [centerLocalX, centerLocalY, swLocalX, swLocalY, swSceneX, swSceneY, loopSceneX, loopSceneY].
      */
     private int[] findWorldTileObjectInScene(Object view, int objectId, int worldX, int worldY, int plane, String type) {
         try {
@@ -1720,7 +1820,7 @@ final class StateSerializer {
                         swSceneX = wx - baseX;
                         swSceneY = wy - baseY;
                     }
-                    return new int[] { centerX, centerY, swLocalX, swLocalY, swSceneX, swSceneY };
+                    return new int[] { centerX, centerY, swLocalX, swLocalY, swSceneX, swSceneY, x, y };
                 }
             }
         } catch (Exception ignored) { }
@@ -1728,7 +1828,7 @@ final class StateSerializer {
     }
 
     /** Must be called on client thread. Returns null on success. */
-    private String doInvokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex) throws Exception {
+    private String doInvokeWorldObjectAction(int objectId, int worldX, int worldY, int plane, String type, int actionIndex, int rawActionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
         Object view = getView.invoke(client);
         if (view == null) return "No world view";
@@ -1759,6 +1859,8 @@ final class StateSerializer {
         int localSwY = localY;
         int sceneObjX = sceneX;
         int sceneObjY = sceneY;
+        int sceneLoopX = sceneX;
+        int sceneLoopY = sceneY;
         if (fromScene != null) {
             localX = fromScene[0];
             localY = fromScene[1];
@@ -1770,23 +1872,16 @@ final class StateSerializer {
                 sceneObjX = fromScene[4];
                 sceneObjY = fromScene[5];
             }
+            if (fromScene.length >= 8) {
+                sceneLoopX = fromScene[6];
+                sceneLoopY = fromScene[7];
+            }
         }
         else {
             return "Object instance not found";
         }
-        // World objects: game objects use GAME_OBJECT_*; wall/ground/decorative use WORLD_ENTITY_*.
-        String menuActionName;
-        if ("gameObject".equals(type)) {
-            String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
-        } else {
-            String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
-        }
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
-        @SuppressWarnings({ "unchecked", "rawtypes" })
-        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
         Method getDef = findMethod(client.getClass(), "getObjectDefinition", "getObjectComposition");
         if (getDef == null) return "No object definition method";
         Object comp = getDef.invoke(client, objectId);
@@ -1805,25 +1900,45 @@ final class StateSerializer {
         Object actionsObj = getActions.invoke(effective);
         if (actionsObj == null || !actionsObj.getClass().isArray()) return "No actions";
         int len = Array.getLength(actionsObj);
-        if (actionIndex >= len) return "Invalid action index";
-        Object a = Array.get(actionsObj, actionIndex);
-        String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
+        if (actionIndex >= len && rawActionIndex < 0) return "Invalid action index";
+        int compactSeen = 0;
+        int mappedRawIndex = -1;
+        for (int i = 0; i < len; i++) {
+            Object ra = Array.get(actionsObj, i);
+            String raw = (ra == null) ? "" : String.valueOf(ra).trim();
+            if (!raw.isEmpty()) {
+                if (compactSeen == actionIndex) mappedRawIndex = i;
+                compactSeen++;
+            }
+        }
+        int invokeRawIndex = rawActionIndex >= 0 ? rawActionIndex : mappedRawIndex;
+        if (invokeRawIndex < 0 || invokeRawIndex >= len) return "Invalid action index";
+        Object ma = Array.get(actionsObj, invokeRawIndex);
+        String option = (ma != null && !String.valueOf(ma).trim().isEmpty()) ? String.valueOf(ma).trim() : null;
+        if (option == null) return "Invalid action index";
+        // Use GAME_OBJECT_* for all world object interactions (game/wall/ground/decorative).
+        String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
+        String menuActionName = invokeRawIndex < names.length ? names[invokeRawIndex] : names[0];
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Strict object-based interaction: use resolved object-local coordinates only (no tile request fallback).
-        int p0 = localX;
-        int p1 = localY;
+        // Object actions are most reliable using the resolved anchor tile from the object's actual scene tile.
+        int p0 = sceneLoopX;
+        int p1 = sceneLoopY;
         try {
             menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, localSwX, localSwY, menuActionEnum, objectId, -1, option, target);
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
                 try {
                     String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, p0, p1, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                    if (err == null) return null;
+                    err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                     if (err == null) return null;
                     err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localSwX, localSwY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                     if (err == null) return null;
@@ -1882,7 +1997,7 @@ final class StateSerializer {
      * Invoke an NPC menu action on the client thread.
      * @return null on success, or an error message.
      */
-    String invokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex) {
+    String invokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex, int rawActionIndex) {
         if (clientThread == null) return "Client not ready";
         if (npcId <= 0) return "Invalid npc id";
         if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
@@ -1890,10 +2005,10 @@ final class StateSerializer {
         AtomicReference<String> error = new AtomicReference<>();
         Runnable runOnClient = () -> {
             try {
-                String err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex);
+                String err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex, rawActionIndex);
                 if (err != null) {
                     // NPC may have moved; retry once with fresh lookup (current position).
-                    err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex);
+                    err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex, rawActionIndex);
                 }
                 error.set(err);
             } catch (Throwable t) {
@@ -1964,7 +2079,7 @@ final class StateSerializer {
     }
 
     /** Must be called on client thread. Returns null on success. */
-    private String doInvokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
+    private String doInvokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex, int rawActionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
         Object view = getView.invoke(client);
         if (view == null) return "No world view";
@@ -2000,12 +2115,8 @@ final class StateSerializer {
         // but Exchange/History/Set are shifted — SECOND does nothing, THIRD→Exchange, FOURTH→History, FIFTH→Set).
         // Map composition index 0→FIRST, 1→THIRD, 2→FOURTH, 3→FIFTH so the intended option fires.
         String[] names = { "NPC_FIRST_OPTION", "NPC_SECOND_OPTION", "NPC_THIRD_OPTION", "NPC_FOURTH_OPTION", "NPC_FIFTH_OPTION" };
-        int menuActionIndex = actionIndex == 0 ? 0 : Math.min(actionIndex + 1, names.length - 1);
-        String menuActionName = names[menuActionIndex];
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
-        @SuppressWarnings({ "unchecked", "rawtypes" })
-        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
         Method getDef = findMethod(client.getClass(), "getNpcDefinition", "getNpcComposition");
         if (getDef == null) return "No npc definition method";
         Object comp = getDef.invoke(client, npcId);
@@ -2029,9 +2140,17 @@ final class StateSerializer {
         Object actionsObj = getActions.invoke(effective);
         if (actionsObj == null || !actionsObj.getClass().isArray()) return "No actions";
         int len = Array.getLength(actionsObj);
-        if (actionIndex >= len) return "Invalid action index";
-        Object a = Array.get(actionsObj, actionIndex);
-        String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : "Unknown";
+        int invokeRawIndex = rawActionIndex >= 0 ? rawActionIndex : actionIndex;
+        if (invokeRawIndex < 0 || invokeRawIndex >= len) return "Invalid action index";
+        Object a = Array.get(actionsObj, invokeRawIndex);
+        String option = (a != null && !String.valueOf(a).trim().isEmpty()) ? String.valueOf(a).trim() : null;
+        if (option == null) return "Invalid action index";
+        int menuActionIndex = rawActionIndex >= 0
+            ? Math.min(invokeRawIndex, names.length - 1)
+            : (actionIndex == 0 ? 0 : Math.min(actionIndex + 1, names.length - 1));
+        String menuActionName = names[menuActionIndex];
+        @SuppressWarnings({ "unchecked", "rawtypes" })
+        Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
         String target = resolveNpcName(client, npcId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
@@ -2227,6 +2346,18 @@ final class StateSerializer {
         } catch (Exception e) {
             return "";
         }
+    }
+
+    private static void debugLog(String runId, String hypothesisId, String location, String message, String dataJson) {
+        try {
+            File f = new File(System.getProperty("user.dir", "."), DEBUG_LOG_PATH);
+            long ts = System.currentTimeMillis();
+            String data = (dataJson == null || dataJson.isEmpty()) ? "{}" : dataJson;
+            String line = "{\"sessionId\":\"" + DEBUG_SESSION_ID + "\",\"runId\":\"" + escape(runId) + "\",\"hypothesisId\":\"" + escape(hypothesisId) + "\",\"location\":\"" + escape(location) + "\",\"message\":\"" + escape(message) + "\",\"data\":" + data + ",\"timestamp\":" + ts + "}\n";
+            try (FileOutputStream out = new FileOutputStream(f, true)) {
+                out.write(line.getBytes(StandardCharsets.UTF_8));
+            }
+        } catch (Throwable ignored) { }
     }
 
     private static String escape(String s) {
