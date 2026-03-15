@@ -175,19 +175,20 @@ public final class DashboardFrame {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         try {
             JsonObj root = JsonObj.parse(json);
-            addSection("Game state", gameStateSection(root), false);
+            addSection("Game state", gameStateSection(root), true);
             addSection("Player", playerSection(root), false);
             addSection("Players", listSection(root.getArray("players"), Arrays.asList("name", "worldX", "worldY", "combatLevel")), true);
             addSection("NPCs", entitySectionWithSearch(root.getArray("npcs"), "npcId", "name", "worldX", "worldY", "plane", "actions", "npc"), true);
             addSection("World objects", worldObjectSectionWithSearch(root.getArray("worldObjects")), true);
             addSection("Ground items", groundItemSection(root.getArray("groundItems")), true);
-            addSection("World view", simpleSection(root.getObject("worldView"), "baseX", "baseY", "plane"), false);
-            addSection("Camera", simpleSection(root.getObject("camera"), "x", "y", "z", "pitch", "yaw"), false);
+            addSection("World view", simpleSection(root.getObject("worldView"), "baseX", "baseY", "plane"), true);
+            setStatus(true, "OK");
             setStatus(true, "OK");
         } catch (Exception e) {
             addSection("Error", new JLabel("Parse error: " + e.getMessage()), false);
             setStatus(false, e.getMessage());
         }
+        contentPanel.add(Box.createVerticalGlue());
         contentPanel.revalidate();
         contentPanel.repaint();
         if (focusId != null) {
@@ -230,9 +231,9 @@ public final class DashboardFrame {
     }
 
     private JPanel gameStateSection(JsonObj root) {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         p.setBackground(new Color(0x25, 0x25, 0x2b));
-        p.setBorder(new EmptyBorder(4, 8, 4, 8));
+        p.setBorder(new EmptyBorder(2, 6, 2, 6));
         String state = root.getString("gameState");
         String map = root.getString("mapName");
         if (map == null || map.isEmpty()) map = root.getString("regionId") != null ? "Region: " + root.getString("regionId") : "";
@@ -246,7 +247,7 @@ public final class DashboardFrame {
         JPanel outer = new JPanel();
         outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
-        outer.setBorder(new EmptyBorder(8, 8, 8, 8));
+        outer.setBorder(new EmptyBorder(4, 6, 4, 6));
         JsonObj player = root.getObject("localPlayer");
         if (player == null) {
             outer.add(new JLabel("Not in game"));
@@ -263,6 +264,13 @@ public final class DashboardFrame {
         outer.add(labelRow("Hitpoints", hp));
         outer.add(labelRow("Prayer", pray));
         outer.add(labelRow("Run energy", run + "%"));
+        JsonObj camera = root.getObject("camera");
+        if (camera != null) {
+            String cx = camera.getString("x"), cy = camera.getString("y"), cz = camera.getString("z");
+            String cpitch = camera.getString("pitch"), cyaw = camera.getString("yaw");
+            String camStr = (cx != null ? cx : "—") + " " + (cy != null ? cy : "") + " " + (cz != null ? cz : "") + "  pitch " + (cpitch != null ? cpitch : "—") + " yaw " + (cyaw != null ? cyaw : "—");
+            outer.add(labelRow("Camera", camStr.trim().isEmpty() ? "—" : camStr.trim()));
+        }
         addCollapsibleSubSection(outer, "Player:Equipped", "Equipped", equipmentGrid(root.getArray("equipment")), true);
         addCollapsibleSubSection(outer, "Player:Inventory", "Inventory", inventoryGrid(root.getArray("inventory")), true);
         return outer;
@@ -284,7 +292,7 @@ public final class DashboardFrame {
         boolean expanded = sectionExpanded.containsKey(sectionKey) ? sectionExpanded.get(sectionKey) : !collapsedByDefault;
         Color bg = new Color(0x25, 0x25, 0x2b);
         Color titleFg = new Color(0x94, 0xa3, 0xb8);
-        parent.add(Box.createVerticalStrut(8));
+        parent.add(Box.createVerticalStrut(4));
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         header.setBackground(bg);
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -627,8 +635,9 @@ public final class DashboardFrame {
     }
 
     private JPanel simpleSection(JsonObj o, String... keys) {
-        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        JPanel p = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         p.setBackground(new Color(0x25, 0x25, 0x2b));
+        p.setBorder(new EmptyBorder(2, 6, 2, 6));
         if (o == null) {
             p.add(new JLabel("—"));
             return p;
