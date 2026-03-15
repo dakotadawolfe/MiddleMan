@@ -121,7 +121,7 @@ public final class DashboardFrame {
         toolbar.add(statusLabel);
         root.add(toolbar, BorderLayout.NORTH);
 
-        contentPanel = new JPanel();
+        contentPanel = new ScrollablePanel();
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(bg);
         contentPanel.setForeground(fg);
@@ -188,7 +188,6 @@ public final class DashboardFrame {
             addSection("Error", new JLabel("Parse error: " + e.getMessage()), false);
             setStatus(false, e.getMessage());
         }
-        contentPanel.add(Box.createVerticalGlue());
         contentPanel.revalidate();
         contentPanel.repaint();
         if (focusId != null) {
@@ -735,6 +734,20 @@ public final class DashboardFrame {
         c.disconnect();
         if (code < 200 || code >= 300) throw new Exception("HTTP " + code + (resp.isEmpty() ? "" : ": " + resp));
         return resp;
+    }
+
+    /** Panel that does not stretch in height when inside a JScrollPane, so no huge blank area below content. */
+    private static final class ScrollablePanel extends JPanel implements javax.swing.Scrollable {
+        @Override
+        public boolean getScrollableTracksViewportHeight() { return false; }
+        @Override
+        public boolean getScrollableTracksViewportWidth() { return true; }
+        @Override
+        public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
+        @Override
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 16; }
+        @Override
+        public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) { return visibleRect.height; }
     }
 
     // --- Minimal JSON parsing (no external deps) ---
