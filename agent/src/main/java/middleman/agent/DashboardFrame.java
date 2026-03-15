@@ -3,6 +3,8 @@ package middleman.agent;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
 import java.awt.*;
 import java.awt.event.*;
 import java.io.OutputStream;
@@ -30,6 +32,8 @@ public final class DashboardFrame {
     private JPanel contentPanel;
     private javax.swing.Timer refreshTimer;
     private final AtomicBoolean loading = new AtomicBoolean(false);
+    private volatile String npcSearchFilter = "";
+    private volatile String worldObjectSearchFilter = "";
 
     private DashboardFrame(int port) {
         this.port = port;
@@ -167,17 +171,17 @@ public final class DashboardFrame {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         try {
             JsonObj root = JsonObj.parse(json);
-            addSection("Game state", gameStateSection(root));
-            addSection("Player", playerSection(root));
-            addSection("Players", listSection(root.getArray("players"), Arrays.asList("name", "worldX", "worldY", "combatLevel")));
-            addSection("NPCs", entitySection(root.getArray("npcs"), "npcId", "name", "worldX", "worldY", "plane", "actions", "npc"));
-            addSection("World objects", worldObjectSection(root.getArray("worldObjects")));
-            addSection("Ground items", groundItemSection(root.getArray("groundItems")));
-            addSection("World view", simpleSection(root.getObject("worldView"), "baseX", "baseY", "plane"));
-            addSection("Camera", simpleSection(root.getObject("camera"), "x", "y", "z", "pitch", "yaw"));
+            addSection("Game state", gameStateSection(root), false);
+            addSection("Player", playerSection(root), false);
+            addSection("Players", listSection(root.getArray("players"), Arrays.asList("name", "worldX", "worldY", "combatLevel")), true);
+            addSection("NPCs", entitySectionWithSearch(root.getArray("npcs"), "npcId", "name", "worldX", "worldY", "plane", "actions", "npc"), true);
+            addSection("World objects", worldObjectSectionWithSearch(root.getArray("worldObjects")), true);
+            addSection("Ground items", groundItemSection(root.getArray("groundItems")), true);
+            addSection("World view", simpleSection(root.getObject("worldView"), "baseX", "baseY", "plane"), false);
+            addSection("Camera", simpleSection(root.getObject("camera"), "x", "y", "z", "pitch", "yaw"), false);
             setStatus(true, "OK");
         } catch (Exception e) {
-            addSection("Error", new JLabel("Parse error: " + e.getMessage()));
+            addSection("Error", new JLabel("Parse error: " + e.getMessage()), false);
             setStatus(false, e.getMessage());
         }
         contentPanel.revalidate();
@@ -218,8 +222,8 @@ public final class DashboardFrame {
         outer.add(labelRow("Hitpoints", hp));
         outer.add(labelRow("Prayer", pray));
         outer.add(labelRow("Run energy", run + "%"));
-        addSubSection(outer, "Equipped", equipmentGrid(root.getArray("equipment")));
-        addSubSection(outer, "Inventory", inventoryGrid(root.getArray("inventory")));
+        addCollapsibleSubSection(outer, "Equipped", equipmentGrid(root.getArray("equipment")), true);
+        addCollapsibleSubSection(outer, "Inventory", inventoryGrid(root.getArray("inventory")), true);
         return outer;
     }
 
@@ -235,11 +239,36 @@ public final class DashboardFrame {
         return p;
     }
 
-    private void addSubSection(JPanel parent, String title, JComponent content) {
+    private void addCollapsibleSubSection(JPanel parent, String title, JComponent content, boolean collapsedByDefault) {
+        Color bg = new Color(0x25, 0x25, 0x2b);
+        Color titleFg = new Color(0x94, 0xa3, 0xb8);
         parent.add(Box.createVerticalStrut(8));
-        JLabel t = new JLabel(title);
-        t.setForeground(new Color(0x94, 0xa3, 0xb8));
-        parent.add(t);
+        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
+        header.setBackground(bg);
+        header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        JLabel arrow = new JLabel(collapsedByDefault ? "▶" : "▼");
+        arrow.setForeground(titleFg);
+        arrow.setFont(arrow.getFont().deriveFont(10f));
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setForeground(titleFg);
+        header.add(arrow);
+        header.add(titleLabel);
+        content.setVisible(!collapsedByDefault);
+        Runnable toggle = () -> {
+            boolean nowVisible = content.isVisible();
+            content.setVisible(!nowVisible);
+            arrow.setText(nowVisible ? "▶" : "▼");
+            parent.revalidate();
+            parent.repaint();
+        };
+        MouseAdapter adapter = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) { toggle.run(); }
+        };
+        header.addMouseListener(adapter);
+        arrow.addMouseListener(adapter);
+        titleLabel.addMouseListener(adapter);
+        parent.add(header);
         parent.add(content);
     }
 
@@ -302,47 +331,90 @@ public final class DashboardFrame {
         return p;
     }
 
-    private JPanel entitySection(JsonArr arr, String idKey, String nameKey, String wxKey, String wyKey, String planeKey, String actionsKey, String actionType) {
-        JPanel outer = new JPanel();
-        outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
+    private static boolean matchesFilter(String filter, String id, String name) {
+        if (filter == null || filter.isEmpty()) return true;
+        String q = filter.toLowerCase();
+        return (id != null && id.toLowerCase().contains(q)) || (name != null && name.toLowerCase().contains(q));
+    }
+
+    private JPanel entitySectionWithSearch(JsonArr arr, String idKey, String nameKey, String wxKey, String wyKey, String planeKey, String actionsKey, String actionType) {
+        JPanel outer = new JPanel(new BorderLayout(2, 2));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
-        if (arr == null) return outer;
-        for (int i = 0; i < Math.min(arr.size(), 80); i++) {
-            JsonObj o = arr.getObject(i);
-            if (o == null) continue;
-            String id = o.getString(idKey);
-            String name = o.getString(nameKey);
-            int wx = o.getInt(wxKey, 0), wy = o.getInt(wyKey, 0), plane = o.getInt(planeKey, 0);
-            JsonArr actions = o.getArray(actionsKey);
-            JPanel card = new JPanel(new BorderLayout(2, 2));
-            card.setBackground(new Color(0x1e, 0x1e, 0x24));
-            card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
-            JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            top.setBackground(new Color(0x1e, 0x1e, 0x24));
-            Color fg = new Color(0xe0, 0xe0, 0xe0);
-            JLabel sum = new JLabel((id != null ? id : "") + (name != null ? " " + name : "") + "  @ " + wx + "," + wy + " " + plane);
-            sum.setForeground(fg);
-            top.add(sum);
-            card.add(top, BorderLayout.NORTH);
-            if (actions != null && actions.size() > 0) {
-                JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
-                btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
-                for (int a = 0; a < actions.size(); a++) {
-                    String action = actions.getString(a);
-                    if (action == null || action.isEmpty()) continue;
-                    final int actionIndex = a;
-                    JButton btn = new JButton(action);
-                    btn.setFocusPainted(false);
-                    btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
-                    btn.setForeground(Color.WHITE);
-                    btn.addActionListener(ev -> postNpcOrGroundAction(actionType, id, wx, wy, plane, actionIndex, btn));
-                    btnRow.add(btn);
+        JTextField search = new JTextField(14);
+        search.setText(npcSearchFilter);
+        search.setToolTipText("Filter by ID or name");
+        search.setBackground(new Color(0x2d, 0x2d, 0x33));
+        search.setForeground(new Color(0xe0, 0xe0, 0xe0));
+        search.setCaretColor(new Color(0xe0, 0xe0, 0xe0));
+        JPanel cardsPanel = new JPanel();
+        cardsPanel.setLayout(new BoxLayout(cardsPanel, BoxLayout.Y_AXIS));
+        cardsPanel.setBackground(new Color(0x25, 0x25, 0x2b));
+        Runnable updateCards = () -> {
+            String q = search.getText();
+            if (q != null) q = q.trim();
+            npcSearchFilter = q != null ? q : "";
+            cardsPanel.removeAll();
+            if (arr != null) {
+                for (int i = 0; i < Math.min(arr.size(), 80); i++) {
+                    JsonObj o = arr.getObject(i);
+                    if (o == null) continue;
+                    String id = o.getString(idKey);
+                    String name = o.getString(nameKey);
+                    if (!matchesFilter(npcSearchFilter, id, name)) continue;
+                    cardsPanel.add(buildNpcCard(o, idKey, nameKey, wxKey, wyKey, planeKey, actionsKey, actionType));
                 }
-                card.add(btnRow, BorderLayout.CENTER);
             }
-            outer.add(card);
-        }
+            cardsPanel.revalidate();
+            cardsPanel.repaint();
+        };
+        search.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { updateCards.run(); }
+            @Override public void removeUpdate(DocumentEvent e) { updateCards.run(); }
+            @Override public void changedUpdate(DocumentEvent e) { updateCards.run(); }
+        });
+        updateCards.run();
+        JPanel searchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        searchRow.setBackground(new Color(0x25, 0x25, 0x2b));
+        JLabel searchLbl = new JLabel("Search:");
+        searchLbl.setForeground(new Color(0x94, 0xa3, 0xb8));
+        searchRow.add(searchLbl);
+        searchRow.add(search);
+        outer.add(searchRow, BorderLayout.NORTH);
+        outer.add(new JScrollPane(cardsPanel), BorderLayout.CENTER);
         return outer;
+    }
+
+    private JPanel buildNpcCard(JsonObj o, String idKey, String nameKey, String wxKey, String wyKey, String planeKey, String actionsKey, String actionType) {
+        String id = o.getString(idKey);
+        String name = o.getString(nameKey);
+        int wx = o.getInt(wxKey, 0), wy = o.getInt(wyKey, 0), plane = o.getInt(planeKey, 0);
+        JsonArr actions = o.getArray(actionsKey);
+        JPanel card = new JPanel(new BorderLayout(2, 2));
+        card.setBackground(new Color(0x1e, 0x1e, 0x24));
+        card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        top.setBackground(new Color(0x1e, 0x1e, 0x24));
+        JLabel sum = new JLabel((id != null ? id : "") + (name != null ? " " + name : "") + "  @ " + wx + "," + wy + " " + plane);
+        sum.setForeground(new Color(0xe0, 0xe0, 0xe0));
+        top.add(sum);
+        card.add(top, BorderLayout.NORTH);
+        if (actions != null && actions.size() > 0) {
+            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+            btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
+            for (int a = 0; a < actions.size(); a++) {
+                String action = actions.getString(a);
+                if (action == null || action.isEmpty()) continue;
+                final int actionIndex = a;
+                JButton btn = new JButton(action);
+                btn.setFocusPainted(false);
+                btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
+                btn.setForeground(Color.WHITE);
+                btn.addActionListener(ev -> postNpcOrGroundAction(actionType, id, wx, wy, plane, actionIndex, btn));
+                btnRow.add(btn);
+            }
+            card.add(btnRow, BorderLayout.CENTER);
+        }
+        return card;
     }
 
     private void postNpcOrGroundAction(String type, String id, int wx, int wy, int plane, int actionIndex, JButton btn) {
@@ -366,48 +438,86 @@ public final class DashboardFrame {
         }).start();
     }
 
-    private JPanel worldObjectSection(JsonArr arr) {
-        JPanel outer = new JPanel();
-        outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
+    private JPanel worldObjectSectionWithSearch(JsonArr arr) {
+        JPanel outer = new JPanel(new BorderLayout(2, 2));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
-        if (arr == null) return outer;
-        for (int i = 0; i < Math.min(arr.size(), 80); i++) {
-            JsonObj o = arr.getObject(i);
-            if (o == null) continue;
-            String type = o.getString("type");
-            String id = o.getString("id");
-            String name = o.getString("name");
-            int wx = o.getInt("worldX", 0), wy = o.getInt("worldY", 0), plane = o.getInt("plane", 0);
-            JsonArr actions = o.getArray("actions");
-            JPanel card = new JPanel(new BorderLayout(2, 2));
-            card.setBackground(new Color(0x1e, 0x1e, 0x24));
-            card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
-            JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
-            top.setBackground(new Color(0x1e, 0x1e, 0x24));
-            JLabel sum = new JLabel((type != null ? type : "") + " " + (id != null ? id : "") + (name != null ? " " + name : "") + "  @ " + wx + "," + wy + " " + plane);
-            sum.setForeground(new Color(0xe0, 0xe0, 0xe0));
-            top.add(sum);
-            card.add(top, BorderLayout.NORTH);
-            if (actions != null && actions.size() > 0) {
-                JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
-                btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
-                String typeStr = type != null ? type : "gameObject";
-                for (int a = 0; a < actions.size(); a++) {
-                    String action = actions.getString(a);
-                    if (action == null || action.isEmpty()) continue;
-                    final int actionIndex = a;
-                    JButton btn = new JButton(action);
-                    btn.setFocusPainted(false);
-                    btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
-                    btn.setForeground(Color.WHITE);
-                    btn.addActionListener(ev -> postWorldObjectAction(id, wx, wy, plane, typeStr, actionIndex, btn));
-                    btnRow.add(btn);
+        JTextField search = new JTextField(14);
+        search.setText(worldObjectSearchFilter);
+        search.setToolTipText("Filter by ID or name");
+        search.setBackground(new Color(0x2d, 0x2d, 0x33));
+        search.setForeground(new Color(0xe0, 0xe0, 0xe0));
+        search.setCaretColor(new Color(0xe0, 0xe0, 0xe0));
+        JPanel cardsPanel = new JPanel();
+        cardsPanel.setLayout(new BoxLayout(cardsPanel, BoxLayout.Y_AXIS));
+        cardsPanel.setBackground(new Color(0x25, 0x25, 0x2b));
+        Runnable updateCards = () -> {
+            String q = search.getText();
+            if (q != null) q = q.trim();
+            worldObjectSearchFilter = q != null ? q : "";
+            cardsPanel.removeAll();
+            if (arr != null) {
+                for (int i = 0; i < Math.min(arr.size(), 80); i++) {
+                    JsonObj o = arr.getObject(i);
+                    if (o == null) continue;
+                    String id = o.getString("id");
+                    String name = o.getString("name");
+                    if (!matchesFilter(worldObjectSearchFilter, id, name)) continue;
+                    cardsPanel.add(buildWorldObjectCard(o));
                 }
-                card.add(btnRow, BorderLayout.CENTER);
             }
-            outer.add(card);
-        }
+            cardsPanel.revalidate();
+            cardsPanel.repaint();
+        };
+        search.getDocument().addDocumentListener(new DocumentListener() {
+            @Override public void insertUpdate(DocumentEvent e) { updateCards.run(); }
+            @Override public void removeUpdate(DocumentEvent e) { updateCards.run(); }
+            @Override public void changedUpdate(DocumentEvent e) { updateCards.run(); }
+        });
+        updateCards.run();
+        JPanel searchRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        searchRow.setBackground(new Color(0x25, 0x25, 0x2b));
+        JLabel searchLbl = new JLabel("Search:");
+        searchLbl.setForeground(new Color(0x94, 0xa3, 0xb8));
+        searchRow.add(searchLbl);
+        searchRow.add(search);
+        outer.add(searchRow, BorderLayout.NORTH);
+        outer.add(new JScrollPane(cardsPanel), BorderLayout.CENTER);
         return outer;
+    }
+
+    private JPanel buildWorldObjectCard(JsonObj o) {
+        String type = o.getString("type");
+        String id = o.getString("id");
+        String name = o.getString("name");
+        int wx = o.getInt("worldX", 0), wy = o.getInt("worldY", 0), plane = o.getInt("plane", 0);
+        JsonArr actions = o.getArray("actions");
+        JPanel card = new JPanel(new BorderLayout(2, 2));
+        card.setBackground(new Color(0x1e, 0x1e, 0x24));
+        card.setBorder(BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)));
+        JPanel top = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        top.setBackground(new Color(0x1e, 0x1e, 0x24));
+        JLabel sum = new JLabel((type != null ? type : "") + " " + (id != null ? id : "") + (name != null ? " " + name : "") + "  @ " + wx + "," + wy + " " + plane);
+        sum.setForeground(new Color(0xe0, 0xe0, 0xe0));
+        top.add(sum);
+        card.add(top, BorderLayout.NORTH);
+        if (actions != null && actions.size() > 0) {
+            JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+            btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
+            String typeStr = type != null ? type : "gameObject";
+            for (int a = 0; a < actions.size(); a++) {
+                String action = actions.getString(a);
+                if (action == null || action.isEmpty()) continue;
+                final int actionIndex = a;
+                JButton btn = new JButton(action);
+                btn.setFocusPainted(false);
+                btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
+                btn.setForeground(Color.WHITE);
+                btn.addActionListener(ev -> postWorldObjectAction(id, wx, wy, plane, typeStr, actionIndex, btn));
+                btnRow.add(btn);
+            }
+            card.add(btnRow, BorderLayout.CENTER);
+        }
+        return card;
     }
 
     private void postWorldObjectAction(String id, int wx, int wy, int plane, String type, int actionIndex, JButton btn) {
@@ -487,12 +597,39 @@ public final class DashboardFrame {
         return p;
     }
 
-    private void addSection(String title, JComponent content) {
-        JPanel wrap = new JPanel(new BorderLayout(2, 2));
-        wrap.setBackground(new Color(0x1a, 0x1a, 0x1e));
-        wrap.setBorder(BorderFactory.createTitledBorder(
-            BorderFactory.createLineBorder(new Color(0x33, 0x33, 0x33)),
-            title, TitledBorder.LEADING, TitledBorder.TOP, null, new Color(0x94, 0xa3, 0xb8)));
+    private void addSection(String title, JComponent content, boolean collapsedByDefault) {
+        Color bg = new Color(0x1a, 0x1a, 0x1e);
+        Color border = new Color(0x33, 0x33, 0x33);
+        Color titleFg = new Color(0x94, 0xa3, 0xb8);
+        JPanel wrap = new JPanel(new BorderLayout(2, 0));
+        wrap.setBackground(bg);
+        wrap.setBorder(BorderFactory.createLineBorder(border));
+        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        header.setBackground(bg);
+        header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
+        JLabel arrow = new JLabel(collapsedByDefault ? "▶" : "▼");
+        arrow.setForeground(titleFg);
+        arrow.setFont(arrow.getFont().deriveFont(10f));
+        JLabel titleLabel = new JLabel(title);
+        titleLabel.setForeground(titleFg);
+        header.add(arrow);
+        header.add(titleLabel);
+        content.setVisible(!collapsedByDefault);
+        Runnable toggle = () -> {
+            boolean nowVisible = content.isVisible();
+            content.setVisible(!nowVisible);
+            arrow.setText(nowVisible ? "▶" : "▼");
+            wrap.revalidate();
+            wrap.repaint();
+        };
+        MouseAdapter adapter = new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) { toggle.run(); }
+        };
+        header.addMouseListener(adapter);
+        arrow.addMouseListener(adapter);
+        titleLabel.addMouseListener(adapter);
+        wrap.add(header, BorderLayout.NORTH);
         wrap.add(content, BorderLayout.CENTER);
         contentPanel.add(wrap);
         contentPanel.add(Box.createVerticalStrut(6));
