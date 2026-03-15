@@ -263,8 +263,8 @@ public final class DashboardFrame {
         outer.add(labelRow("Hitpoints", hp));
         outer.add(labelRow("Prayer", pray));
         outer.add(labelRow("Run energy", run + "%"));
-        addCollapsibleSubSection(outer, "Equipped", equipmentGrid(root.getArray("equipment")), true);
-        addCollapsibleSubSection(outer, "Inventory", inventoryGrid(root.getArray("inventory")), true);
+        addCollapsibleSubSection(outer, "Player:Equipped", "Equipped", equipmentGrid(root.getArray("equipment")), true);
+        addCollapsibleSubSection(outer, "Player:Inventory", "Inventory", inventoryGrid(root.getArray("inventory")), true);
         return outer;
     }
 
@@ -280,25 +280,29 @@ public final class DashboardFrame {
         return p;
     }
 
-    private void addCollapsibleSubSection(JPanel parent, String title, JComponent content, boolean collapsedByDefault) {
+    private void addCollapsibleSubSection(JPanel parent, String sectionKey, String title, JComponent content, boolean collapsedByDefault) {
+        boolean expanded = sectionExpanded.containsKey(sectionKey) ? sectionExpanded.get(sectionKey) : !collapsedByDefault;
         Color bg = new Color(0x25, 0x25, 0x2b);
         Color titleFg = new Color(0x94, 0xa3, 0xb8);
         parent.add(Box.createVerticalStrut(8));
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         header.setBackground(bg);
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        JLabel arrow = new JLabel(collapsedByDefault ? "\u25B2" : "\u25BC");
+        JLabel arrow = new JLabel(expanded ? "\u25BC" : "\u25B2");
         arrow.setForeground(titleFg);
         arrow.setFont(arrow.getFont().deriveFont(10f));
         JLabel titleLabel = new JLabel(title);
         titleLabel.setForeground(titleFg);
         header.add(arrow);
         header.add(titleLabel);
-        content.setVisible(!collapsedByDefault);
+        content.setVisible(expanded);
+        final boolean defaultExpanded = !collapsedByDefault;
         Runnable toggle = () -> {
-            boolean nowVisible = content.isVisible();
-            content.setVisible(!nowVisible);
-            arrow.setText(nowVisible ? "\u25B2" : "\u25BC");
+            boolean nowExpanded = sectionExpanded.getOrDefault(sectionKey, defaultExpanded);
+            boolean newExpanded = !nowExpanded;
+            sectionExpanded.put(sectionKey, newExpanded);
+            content.setVisible(newExpanded);
+            arrow.setText(newExpanded ? "\u25BC" : "\u25B2");
             parent.revalidate();
             parent.repaint();
         };
@@ -667,9 +671,14 @@ public final class DashboardFrame {
             sectionExpanded.put(title, newExpanded);
             arrow.setText(newExpanded ? "\u25BC" : "\u25B2");
             if (newExpanded) {
+                wrap.setMaximumSize(null);
+                wrap.setPreferredSize(null);
                 wrap.add(content, BorderLayout.CENTER);
             } else {
                 wrap.remove(content);
+                int h = header.getPreferredSize().height;
+                wrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
+                wrap.setPreferredSize(new Dimension(0, h));
             }
             wrap.revalidate();
             wrap.repaint();
@@ -682,7 +691,13 @@ public final class DashboardFrame {
         arrow.addMouseListener(adapter);
         titleLabel.addMouseListener(adapter);
         wrap.add(header, BorderLayout.NORTH);
-        if (expanded) wrap.add(content, BorderLayout.CENTER);
+        if (expanded) {
+            wrap.add(content, BorderLayout.CENTER);
+        } else {
+            int h = header.getPreferredSize().height;
+            wrap.setMaximumSize(new Dimension(Integer.MAX_VALUE, h));
+            wrap.setPreferredSize(new Dimension(0, h));
+        }
         contentPanel.add(wrap);
         contentPanel.add(Box.createVerticalStrut(0));
     }
