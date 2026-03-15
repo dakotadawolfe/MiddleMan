@@ -1429,18 +1429,18 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Try 1: local 1/128 coords (param0=localX, param1=localY) - targets object on tile (e.g. door) not just the tile
+        // Try 1: scene tile coords (param0=sceneX, param1=sceneY) - this order worked for actions
         try {
-            menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+            menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
-            // Try 2: scene tile coords
+            // Try 2: local 1/128 coords (for clients that expect local)
             try {
-                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
-                // Try 3: inject via menu entry with local coords (precise targeting)
-                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                // Try 3: inject via menu entry with scene coords
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                 if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
