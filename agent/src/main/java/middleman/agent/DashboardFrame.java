@@ -375,9 +375,40 @@ public final class DashboardFrame {
             String name = o != null ? o.getString("name") : null;
             int id = o != null ? o.getInt("id", 0) : 0;
             int qty = o != null ? o.getInt("quantity", 0) : 0;
-            grid.add(cardLabel("Slot " + i, name != null ? id + " " + name : "—", qty));
+            JsonArr actions = o != null ? o.getArray("actions") : null;
+            grid.add(inventoryCard("Slot " + i, name != null ? id + " " + name : "—", qty, actions));
         }
         return grid;
+    }
+
+    private JPanel inventoryCard(String title, String content, int qty, JsonArr actions) {
+        JPanel card = new JPanel(new BorderLayout(2, 2));
+        card.setBorder(new EmptyBorder(4, 6, 4, 6));
+        card.setBackground(new Color(0x1e, 0x1e, 0x24));
+        JLabel top = new JLabel("<html><b>" + title + "</b><br>" + content + (qty > 1 ? " × " + qty : "") + "</html>");
+        top.setForeground(new Color(0xe0, 0xe0, 0xe0));
+        card.add(top, BorderLayout.NORTH);
+
+        JPanel options = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
+        options.setBackground(new Color(0x1e, 0x1e, 0x24));
+        if (actions != null && actions.size() > 0) {
+            for (int i = 0; i < actions.size(); i++) {
+                String action = actions.getString(i);
+                if (action == null || action.isEmpty()) continue;
+                JLabel chip = new JLabel(action);
+                chip.setOpaque(true);
+                chip.setBackground(new Color(0x2d, 0x2d, 0x33));
+                chip.setForeground(new Color(0x7d, 0xd3, 0xfc));
+                chip.setBorder(new EmptyBorder(1, 4, 1, 4));
+                options.add(chip);
+            }
+        } else if (content != null && !content.contains("—")) {
+            JLabel none = new JLabel("No options");
+            none.setForeground(new Color(0x94, 0xa3, 0xb8));
+            options.add(none);
+        }
+        card.add(options, BorderLayout.CENTER);
+        return card;
     }
 
     private JLabel cardLabel(String title, String content, int qty) {
@@ -637,7 +668,6 @@ public final class DashboardFrame {
         outer.setLayout(new BoxLayout(outer, BoxLayout.Y_AXIS));
         outer.setBackground(new Color(0x25, 0x25, 0x2b));
         if (arr == null) return outer;
-        String[] actions = { "Take", "Take-5", "Take-10", "Take-All" };
         for (int i = 0; i < Math.min(arr.size(), 80); i++) {
             JsonObj o = arr.getObject(i);
             if (o == null) continue;
@@ -679,13 +709,20 @@ public final class DashboardFrame {
             card.add(top, BorderLayout.NORTH);
             JPanel btnRow = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 2));
             btnRow.setBackground(new Color(0x1e, 0x1e, 0x24));
-            for (int a = 0; a < actions.length; a++) {
+            JsonArr actions = o.getArray("actions");
+            JsonArr actionSlots = o.getArray("actionSlots");
+            int count = actions != null ? actions.size() : 0;
+            if (count <= 0) count = 1; // Fallback for older agent payloads.
+            for (int a = 0; a < count; a++) {
+                String action = actions != null ? actions.getString(a) : "Take";
+                if (action == null || action.isEmpty()) action = "Take";
                 final int actionIndex = a;
-                JButton btn = new JButton(actions[a]);
+                final int rawActionIndex = getActionSlot(actionSlots, a, a);
+                JButton btn = new JButton(action);
                 btn.setFocusPainted(false);
                 btn.setBackground(new Color(0x0e, 0xa5, 0xe9));
                 btn.setForeground(Color.WHITE);
-                btn.addActionListener(ev -> postNpcOrGroundAction("grounditem", id, wx, wy, plane, actionIndex, actionIndex, btn));
+                btn.addActionListener(ev -> postNpcOrGroundAction("grounditem", id, wx, wy, plane, actionIndex, rawActionIndex, btn));
                 btnRow.add(btn);
             }
             card.add(btnRow, BorderLayout.CENTER);

@@ -1175,11 +1175,127 @@ final class StateSerializer {
                     int haPrice = resolveItemHaPrice(id);
                     long geTotal = (long) gePrice * qty;
                     long haTotal = (long) haPrice * qty;
-                    String json = "{\"id\":" + id + ",\"quantity\":" + qty + ",\"name\":\"" + escape(name) + "\",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + ",\"gePrice\":" + gePrice + ",\"haPrice\":" + haPrice + ",\"geTotal\":" + geTotal + ",\"haTotal\":" + haTotal + "}";
+                    String actionsJson = getGroundItemActionsJson(id);
+                    String actionSlotsJson = getGroundItemActionSlotsJson(id);
+                    String json = "{\"id\":" + id + ",\"quantity\":" + qty + ",\"name\":\"" + escape(name) + "\",\"worldX\":" + wx + ",\"worldY\":" + wy + ",\"plane\":" + plane + ",\"gePrice\":" + gePrice + ",\"haPrice\":" + haPrice + ",\"geTotal\":" + geTotal + ",\"haTotal\":" + haTotal + ",\"actions\":" + actionsJson + ",\"actionSlots\":" + actionSlotsJson + "}";
                     collected.add(new Object[]{ Double.valueOf(dist), json });
                 } catch (Exception ignored) { }
             }
         } catch (Exception ignored) { }
+    }
+
+    /** Returns JSON array of visible ground actions for an item (usually ["Take"]). */
+    private String getGroundItemActionsJson(int itemId) {
+        if (itemManager == null || itemId <= 0) return "[\"Take\"]";
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return "[\"Take\"]";
+            Method getGroundActions = comp.getClass().getMethod("getGroundActions");
+            Object arr = getGroundActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return "[\"Take\"]";
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(arr, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            if (first) return "[\"Take\"]";
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[\"Take\"]";
+        }
+    }
+
+    /** Returns JSON array of raw ground-action slots for each serialized ground action label. */
+    private String getGroundItemActionSlotsJson(int itemId) {
+        if (itemManager == null || itemId <= 0) return "[0]";
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return "[0]";
+            Method getGroundActions = comp.getClass().getMethod("getGroundActions");
+            Object arr = getGroundActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return "[0]";
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(arr, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append(i);
+                    }
+                }
+            }
+            if (first) return "[0]";
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[0]";
+        }
+    }
+
+    /** Maps compact display index to raw ground-action slot index for an item. */
+    private int mapGroundActionDisplayToRawSlot(int itemId, int actionIndex) {
+        if (actionIndex < 0) return -1;
+        if (itemManager == null || itemId <= 0) return actionIndex;
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return actionIndex;
+            Method getGroundActions = comp.getClass().getMethod("getGroundActions");
+            Object arr = getGroundActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return actionIndex;
+            int seen = 0;
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(arr, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (seen == actionIndex) return i;
+                        seen++;
+                    }
+                }
+            }
+            return -1;
+        } catch (Exception e) {
+            return actionIndex;
+        }
+    }
+
+    /** Returns ground-action label at raw slot index, or null if unavailable. */
+    private String getGroundActionByRawSlot(int itemId, int rawActionIndex) {
+        if (rawActionIndex < 0) return null;
+        if (itemManager == null || itemId <= 0) return rawActionIndex == 0 ? "Take" : null;
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return rawActionIndex == 0 ? "Take" : null;
+            Method getGroundActions = comp.getClass().getMethod("getGroundActions");
+            Object arr = getGroundActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return rawActionIndex == 0 ? "Take" : null;
+            if (rawActionIndex >= Array.getLength(arr)) return null;
+            Object a = Array.get(arr, rawActionIndex);
+            if (a == null) return null;
+            String s = String.valueOf(a).trim();
+            return s.isEmpty() ? null : s;
+        } catch (Exception e) {
+            return rawActionIndex == 0 ? "Take" : null;
+        }
     }
 
     private void appendTileObjects(Object tile, Object client, List<Object[]> collected, int playerX, int playerY, Set<String> seen) {
@@ -1594,13 +1710,22 @@ final class StateSerializer {
                 if (i > 0) out.append(",");
                 Object item = Array.get(items, i);
                 if (item == null) {
-                    out.append("{\"slot\":").append(i).append(",\"id\":0,\"quantity\":0,\"name\":\"\"}");
+                    out.append("{\"slot\":").append(i).append(",\"id\":0,\"quantity\":0,\"name\":\"\",\"actions\":[],\"actionSlots\":[]}");
                 } else {
                     int id = (Integer) item.getClass().getMethod("getId").invoke(item);
                     int qty = (Integer) item.getClass().getMethod("getQuantity").invoke(item);
                     String name = resolveItemName(id);
                     boolean noted = resolveItemNoted(id);
-                    out.append("{\"slot\":").append(i).append(",\"id\":").append(id).append(",\"quantity\":").append(qty).append(",\"name\":\"").append(escape(name)).append("\",\"noted\":").append(noted).append("}");
+                    String actionsJson = getInventoryItemActionsJson(id);
+                    String actionSlotsJson = getInventoryItemActionSlotsJson(id);
+                    out.append("{\"slot\":").append(i)
+                        .append(",\"id\":").append(id)
+                        .append(",\"quantity\":").append(qty)
+                        .append(",\"name\":\"").append(escape(name)).append("\"")
+                        .append(",\"noted\":").append(noted)
+                        .append(",\"actions\":").append(actionsJson)
+                        .append(",\"actionSlots\":").append(actionSlotsJson)
+                        .append("}");
                 }
             }
             out.append("]");
@@ -1634,6 +1759,68 @@ final class StateSerializer {
             return name != null ? String.valueOf(name) : "";
         } catch (Exception e) {
             return "";
+        }
+    }
+
+    /** Returns visible inventory actions (e.g. ["Wear","Use","Drop"]) for an item. */
+    private String getInventoryItemActionsJson(int itemId) {
+        if (itemManager == null || itemId <= 0) return "[]";
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return "[]";
+            Method getInventoryActions = comp.getClass().getMethod("getInventoryActions");
+            Object arr = getInventoryActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(arr, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append("\"").append(escape(s)).append("\"");
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** Returns raw inventory action slots for each serialized inventory action label. */
+    private String getInventoryItemActionSlotsJson(int itemId) {
+        if (itemManager == null || itemId <= 0) return "[]";
+        try {
+            Method getComp = itemManager.getClass().getMethod("getItemComposition", int.class);
+            Object comp = getComp.invoke(itemManager, itemId);
+            if (comp == null) return "[]";
+            Method getInventoryActions = comp.getClass().getMethod("getInventoryActions");
+            Object arr = getInventoryActions.invoke(comp);
+            if (arr == null || !arr.getClass().isArray()) return "[]";
+            StringBuilder sb = new StringBuilder("[");
+            boolean first = true;
+            int len = Array.getLength(arr);
+            for (int i = 0; i < len; i++) {
+                Object a = Array.get(arr, i);
+                if (a != null) {
+                    String s = String.valueOf(a).trim();
+                    if (!s.isEmpty()) {
+                        if (!first) sb.append(",");
+                        first = false;
+                        sb.append(i);
+                    }
+                }
+            }
+            sb.append("]");
+            return sb.toString();
+        } catch (Exception e) {
+            return "[]";
         }
     }
 
@@ -2184,7 +2371,7 @@ final class StateSerializer {
      * Invoke a ground item menu action (e.g. Take, Take-5) on the client thread.
      * @return null on success, or an error message.
      */
-    String invokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex) {
+    String invokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex, int rawActionIndex) {
         if (clientThread == null) return "Client not ready";
         if (itemId <= 0) return "Invalid item id";
         if (actionIndex < 0 || actionIndex > 4) return "Invalid action index";
@@ -2192,7 +2379,7 @@ final class StateSerializer {
         AtomicReference<String> error = new AtomicReference<>();
         Runnable runOnClient = () -> {
             try {
-                String err = doInvokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex);
+                String err = doInvokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex, rawActionIndex);
                 error.set(err);
             } catch (Throwable t) {
                 error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
@@ -2262,7 +2449,7 @@ final class StateSerializer {
         return null;
     }
 
-    private String doInvokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
+    private String doInvokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex, int rawActionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
         Object view = getView.invoke(client);
         if (view == null) return "No world view";
@@ -2292,13 +2479,16 @@ final class StateSerializer {
             localX = fromScene[0];
             localY = fromScene[1];
         }
+        int invokeRawIndex = rawActionIndex >= 0 ? rawActionIndex : mapGroundActionDisplayToRawSlot(itemId, actionIndex);
+        if (invokeRawIndex < 0) return "Invalid action index";
         String[] names = { "GROUND_ITEM_FIRST_OPTION", "GROUND_ITEM_SECOND_OPTION", "GROUND_ITEM_THIRD_OPTION", "GROUND_ITEM_FOURTH_OPTION", "GROUND_ITEM_FIFTH_OPTION" };
-        String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        String menuActionName = invokeRawIndex < names.length ? names[invokeRawIndex] : names[0];
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
         @SuppressWarnings({ "unchecked", "rawtypes" })
         Object menuActionEnum = Enum.valueOf((Class<Enum>) menuActionClass, menuActionName);
-        String option = actionIndex == 0 ? "Take" : (actionIndex == 1 ? "Take-5" : (actionIndex == 2 ? "Take-10" : "Take-All"));
+        String option = getGroundActionByRawSlot(itemId, invokeRawIndex);
+        if (option == null || option.isEmpty()) return "Invalid action index";
         String target = resolveItemName(itemId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);

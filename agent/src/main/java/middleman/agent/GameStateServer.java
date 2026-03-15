@@ -318,7 +318,7 @@ final class GameStateServer {
                 return;
             }
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
-            int itemId = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0;
+            int itemId = -1, worldX = 0, worldY = 0, plane = 0, actionIndex = 0, rawActionIndex = -1;
             for (String part : body.split("&")) {
                 int eq = part.indexOf('=');
                 if (eq <= 0) continue;
@@ -330,10 +330,11 @@ final class GameStateServer {
                     case "worldY": worldY = Integer.parseInt(val); break;
                     case "plane": plane = Integer.parseInt(val); break;
                     case "actionIndex": actionIndex = Integer.parseInt(val); break;
+                    case "rawActionIndex": rawActionIndex = Integer.parseInt(val); break;
                     default: break;
                 }
             }
-            String err = s.invokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex);
+            String err = s.invokeGroundItemAction(itemId, worldX, worldY, plane, actionIndex, rawActionIndex);
             if (err != null) {
                 send(exchange, 400, "{\"ok\":false,\"error\":\"" + escape(err) + "\"}");
                 return;
