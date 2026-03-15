@@ -21,7 +21,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
  */
 public final class DashboardFrame {
 
-    private static final int REFRESH_MS = 100;
+    private static final int REFRESH_MS = 250;
     private static final String BASE = "http://127.0.0.1";
 
     private final int port;
@@ -34,6 +34,7 @@ public final class DashboardFrame {
     private final AtomicBoolean loading = new AtomicBoolean(false);
     private volatile String npcSearchFilter = "";
     private volatile String worldObjectSearchFilter = "";
+    private final Set<String> expandedSections = new HashSet<>();
 
     private DashboardFrame(int port) {
         this.port = port;
@@ -246,7 +247,7 @@ public final class DashboardFrame {
         JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 2));
         header.setBackground(bg);
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        JLabel arrow = new JLabel(collapsedByDefault ? "▶" : "▼");
+        JLabel arrow = new JLabel(collapsedByDefault ? "\u25B2" : "\u25BC");
         arrow.setForeground(titleFg);
         arrow.setFont(arrow.getFont().deriveFont(10f));
         JLabel titleLabel = new JLabel(title);
@@ -257,7 +258,7 @@ public final class DashboardFrame {
         Runnable toggle = () -> {
             boolean nowVisible = content.isVisible();
             content.setVisible(!nowVisible);
-            arrow.setText(nowVisible ? "▶" : "▼");
+            arrow.setText(nowVisible ? "\u25B2" : "\u25BC");
             parent.revalidate();
             parent.repaint();
         };
@@ -598,27 +599,30 @@ public final class DashboardFrame {
     }
 
     private void addSection(String title, JComponent content, boolean collapsedByDefault) {
+        boolean expanded = expandedSections.contains(title) || !collapsedByDefault;
         Color bg = new Color(0x1a, 0x1a, 0x1e);
         Color border = new Color(0x33, 0x33, 0x33);
         Color titleFg = new Color(0x94, 0xa3, 0xb8);
-        JPanel wrap = new JPanel(new BorderLayout(2, 0));
+        JPanel wrap = new JPanel(new BorderLayout(0, 0));
         wrap.setBackground(bg);
-        wrap.setBorder(BorderFactory.createLineBorder(border));
-        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 4, 4));
+        wrap.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, border));
+        JPanel header = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
         header.setBackground(bg);
+        header.setBorder(new EmptyBorder(2, 6, 2, 6));
         header.setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
-        JLabel arrow = new JLabel(collapsedByDefault ? "▶" : "▼");
+        JLabel arrow = new JLabel(expanded ? "\u25BC" : "\u25B2");
         arrow.setForeground(titleFg);
         arrow.setFont(arrow.getFont().deriveFont(10f));
         JLabel titleLabel = new JLabel(title);
         titleLabel.setForeground(titleFg);
         header.add(arrow);
         header.add(titleLabel);
-        content.setVisible(!collapsedByDefault);
+        content.setVisible(expanded);
         Runnable toggle = () -> {
             boolean nowVisible = content.isVisible();
             content.setVisible(!nowVisible);
-            arrow.setText(nowVisible ? "▶" : "▼");
+            if (content.isVisible()) expandedSections.add(title); else expandedSections.remove(title);
+            arrow.setText(content.isVisible() ? "\u25BC" : "\u25B2");
             wrap.revalidate();
             wrap.repaint();
         };
@@ -632,7 +636,7 @@ public final class DashboardFrame {
         wrap.add(header, BorderLayout.NORTH);
         wrap.add(content, BorderLayout.CENTER);
         contentPanel.add(wrap);
-        contentPanel.add(Box.createVerticalStrut(6));
+        contentPanel.add(Box.createVerticalStrut(2));
     }
 
     private void setStatus(boolean ok, String msg) {
