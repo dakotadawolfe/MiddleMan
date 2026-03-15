@@ -30,25 +30,7 @@ static class OpenDashboard
         string root = Path.GetDirectoryName(baseDir);
         string agentJar = Path.Combine(baseDir, "agent", "build", "MiddleManAgent.jar");
         string launchPs1 = Path.Combine(baseDir, "launcher", "launch.ps1");
-        string dashboardHtml = Path.Combine(baseDir, "dashboard", "index.html");
         string logPath = Path.Combine(root, "debug-01c49b.log");
-
-        bool dashboardOnly = false;
-        if (args != null && args.Length > 0)
-        {
-            string a = args[0].Trim().ToLowerInvariant();
-            if (a == "--dashboard-only" || a == "-d" || a == "/d")
-                dashboardOnly = true;
-        }
-
-        if (dashboardOnly)
-        {
-            if (File.Exists(dashboardHtml))
-            {
-                try { Process.Start(new ProcessStartInfo(dashboardHtml) { UseShellExecute = true }); } catch { }
-            }
-            return;
-        }
 
         string agentDir = Path.Combine(baseDir, "agent");
         string buildBat = Path.Combine(agentDir, "build.bat");
@@ -92,9 +74,7 @@ static class OpenDashboard
         if (!File.Exists(launchPs1))
             return;
 
-        int? runelitePid = null;
-        if (!dashboardOnly)
-            runelitePid = FindRuneLiteProcessId();
+        int? runelitePid = FindRuneLiteProcessId();
 
         DebugLog(logPath, "OpenDashboard.Main", "FindRuneLiteProcessId result", "{\"runelitePid\":" + (runelitePid.HasValue ? runelitePid.Value.ToString() : "null") + "}", "H1");
 
@@ -111,11 +91,6 @@ static class OpenDashboard
                 DebugLog(logPath, "OpenDashboard.Main", "RunInjector result", "{\"exit\":" + exit + ",\"stderr\":\"" + Esc(errTrunc) + "\"}", "H2,H3");
                 attached = (exit == 0);
             }
-        }
-
-        if (File.Exists(dashboardHtml))
-        {
-            try { Process.Start(new ProcessStartInfo(dashboardHtml) { UseShellExecute = true }); } catch { }
         }
 
         // Start RuneLite with agent only when no RuneLite is running (so we don't start a second one)

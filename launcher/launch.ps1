@@ -50,10 +50,6 @@ if (-not $AttachableOnly) {
     Write-Host "  Agent status: $Root\MiddleMan\middleman.log"
     Write-Host "========================================" -ForegroundColor Cyan
     Write-Host ""
-    $DashboardPath = Join-Path $MiddleManDir "dashboard\index.html"
-    if (Test-Path $DashboardPath) {
-        Start-Process $DashboardPath
-    }
 }
 Set-Location $Root
 $exe = $Cmd[0]

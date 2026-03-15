@@ -51,7 +51,7 @@ if errorlevel 1 (
     echo Attach failed. Need a JDK with jdk.attach: set JAVA_HOME to your JDK and try again.
     echo Check MiddleMan\middleman.log to see if the agent started.
 ) else (
-    echo Attached. Wait a few seconds for the API to start, then refresh the dashboard.
+    echo Attached. The dashboard window should open in RuneLite; wait a few seconds for the API to start.
 )
 goto :post_attach
 
@@ -65,15 +65,12 @@ echo Pruning old unlocked agent JARs (keeping latest)...
 for %%f in ("%BUILD_DIR%\MiddleManAgent-*.jar") do (
     if /I not "%%~nxf"=="!JARNAME!" del /q "%%~f" >nul 2>nul
 )
-goto :open_dash
+goto :done
 
 :prune_all
 echo RuneLite closed; pruning generated agent JARs...
 del /q "%BUILD_DIR%\MiddleManAgent-*.jar" >nul 2>nul
 
-:open_dash
-
-echo [3/3] Opening dashboard...
-start "" "%~dp0dashboard\index.html"
+:done
 echo Done.
 exit /b 0

@@ -11,9 +11,6 @@ import java.net.InetSocketAddress;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.util.concurrent.Executors;
 
 /**
@@ -54,7 +51,6 @@ final class GameStateServer {
                 }
             }
         }
-        server.createContext("/dashboard", this::handleDashboard);
         server.createContext("/", this::handleRoot);
         server.createContext("/shutdown", this::handleShutdown);
         server.createContext("/game/state", this::handleFullState);
@@ -101,33 +97,13 @@ final class GameStateServer {
         }
     }
 
-    private void handleDashboard(HttpExchange exchange) throws IOException {
-        if (!"GET".equals(exchange.getRequestMethod())) {
-            send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
-            return;
-        }
-        String userDir = System.getProperty("user.dir", ".");
-        Path path = Paths.get(userDir, "MiddleMan", "dashboard", "index.html");
-        if (!Files.isRegularFile(path)) {
-            send(exchange, 404, "{\"error\":\"Dashboard not found\"}");
-            return;
-        }
-        byte[] html = Files.readAllBytes(path);
-        exchange.getResponseHeaders().set("Content-Type", "text/html; charset=utf-8");
-        exchange.getResponseHeaders().set("Access-Control-Allow-Origin", "*");
-        exchange.sendResponseHeaders(200, html.length);
-        try (OutputStream os = exchange.getResponseBody()) {
-            os.write(html);
-        }
-    }
-
     private void handleRoot(HttpExchange exchange) throws IOException {
         if (!"GET".equals(exchange.getRequestMethod())) {
             send(exchange, 405, "{\"error\":\"Method Not Allowed\"}");
             return;
         }
         String body = "{\"service\":\"MiddleMan\",\"endpoints\":[" +
-                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/game/grounditem/action\",\"/game/sprite/item/{id}\",\"/dashboard\"]}";
+                "\"/game/state\",\"/game/state/simple\",\"/game/players\",\"/game/npcs\",\"/game/worldobjects\",\"/game/grounditems\",\"/game/worldobject/action\",\"/game/npc/action\",\"/game/grounditem/action\",\"/game/sprite/item/{id}\"]}";
         send(exchange, 200, body);
     }
 

@@ -46,6 +46,24 @@ public final class DashboardFrame {
         d.refreshOnce();
     }
 
+    private static void setUIFont() {
+        Font uiFont = null;
+        String[] preferred = { "Segoe UI", "SF Pro Text", "Ubuntu", "Helvetica Neue", "Arial" };
+        for (String name : preferred) {
+            Font f = new Font(name, Font.PLAIN, 13);
+            if (name.equals(f.getFamily())) {
+                uiFont = f;
+                break;
+            }
+        }
+        if (uiFont == null) uiFont = new Font(Font.SANS_SERIF, Font.PLAIN, 13);
+        UIManager.put("Label.font", uiFont);
+        UIManager.put("Button.font", uiFont);
+        UIManager.put("TextField.font", uiFont);
+        UIManager.put("CheckBox.font", uiFont);
+        UIManager.put("TitledBorder.font", uiFont.deriveFont(Font.BOLD));
+    }
+
     private String base() {
         try {
             int p = Integer.parseInt(portField.getText().trim());
@@ -56,6 +74,7 @@ public final class DashboardFrame {
     }
 
     private void build() {
+        setUIFont();
         frame = new JFrame("MiddleMan – Game State");
         frame.setDefaultCloseOperation(JFrame.DISPOSE_ON_CLOSE);
         frame.setSize(720, 700);
