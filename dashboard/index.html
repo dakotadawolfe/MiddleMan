@@ -141,6 +141,32 @@
     const autoEl = document.getElementById('auto');
     const statusEl = document.getElementById('status');
 
+    window._pauseRefresh = false;
+    function stopAutoRefresh() {
+      if (window._mid) { clearInterval(window._mid); window._mid = null; }
+    }
+    function pauseAutoRefresh() {
+      window._pauseRefresh = true;
+      stopAutoRefresh();
+    }
+    function resumeAutoRefresh() {
+      window._pauseRefresh = false;
+      if (autoEl.checked) {
+        stopAutoRefresh();
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      }
+    }
+    function unpauseAutoRefresh() {
+      window._pauseRefresh = false;
+      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded, .ground-item-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
+      if (autoEl.checked) {
+        stopAutoRefresh();
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      }
+    }
+
     function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
 
     const loadStartTime = Date.now();
@@ -245,6 +271,7 @@
           if (e.target.classList.contains('npc-action-link')) {
             e.preventDefault();
             e.stopPropagation();
+            pauseAutoRefresh();
             var link = e.target;
             if (link.classList.contains('sending')) return;
             link.classList.add('sending');
@@ -267,9 +294,9 @@
           }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
-            if (window._mid) { clearInterval(window._mid); window._mid = null; }
-          } else if (autoEl.checked) {
-            window._mid = setInterval(fetchState, 50);
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
           }
         });
       });
@@ -338,6 +365,7 @@
           if (e.target.classList.contains('object-action-link')) {
             e.preventDefault();
             e.stopPropagation();
+            pauseAutoRefresh();
             var link = e.target;
             if (link.classList.contains('sending')) return;
             link.classList.add('sending');
@@ -361,9 +389,9 @@
           }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
-            if (window._mid) { clearInterval(window._mid); window._mid = null; }
-          } else if (autoEl.checked) {
-            window._mid = setInterval(fetchState, 50);
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
           }
         });
       });
@@ -412,6 +440,7 @@
           if (e.target.classList.contains('ground-item-action-link')) {
             e.preventDefault();
             e.stopPropagation();
+            pauseAutoRefresh();
             var link = e.target;
             if (link.classList.contains('sending')) return;
             link.classList.add('sending');
@@ -434,9 +463,9 @@
           }
           card.classList.toggle('expanded');
           if (card.classList.contains('expanded')) {
-            if (window._mid) { clearInterval(window._mid); window._mid = null; }
-          } else if (autoEl.checked) {
-            window._mid = setInterval(fetchState, 50);
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
           }
         });
       });
@@ -449,10 +478,13 @@
     }
 
     async function fetchState() {
+      if (window._pauseRefresh) return;
       try {
         const r = await fetch(base() + '/game/state?t=' + Date.now());
+        if (window._pauseRefresh) return;
         if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
         const data = await r.json();
+        if (window._pauseRefresh) return;
         setStatus(true);
         var vEl = document.getElementById('agentVersion');
         if (vEl) vEl.textContent = data.agentVersion ? ' (agent ' + data.agentVersion + ')' : ' (agent version unknown — run MiddleMan\\attach-and-open.bat to rebuild & attach; if it still shows unknown, restart RuneLite once then run the bat again)';
@@ -486,18 +518,31 @@
       }
     }
 
-    refreshEl.addEventListener('click', fetchState);
+    refreshEl.addEventListener('click', function () {
+      var wasPaused = window._pauseRefresh;
+      window._pauseRefresh = false;
+      fetchState();
+      if (wasPaused) window._pauseRefresh = true;
+    });
     autoEl.addEventListener('change', function () {
       if (autoEl.checked) {
+        stopAutoRefresh();
         window._mid = setInterval(fetchState, 50);
         fetchState();
       } else {
-        if (window._mid) { clearInterval(window._mid); window._mid = null; }
+        stopAutoRefresh();
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card') && !e.target.closest('.ground-item-card')) {
+        if (window._pauseRefresh) unpauseAutoRefresh();
       }
     });
 
     fetchState();
     if (autoEl.checked) {
+      stopAutoRefresh();
       window._mid = setInterval(fetchState, 50);
     }
   </script>
