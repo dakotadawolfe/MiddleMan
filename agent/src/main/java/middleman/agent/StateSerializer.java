@@ -1620,10 +1620,10 @@ final class StateSerializer {
 
     /**
      * Must be called on client thread. Finds a TileObject in the scene matching (objectId, worldX, worldY, plane, type)
-     * and returns [centerLocalX, centerLocalY, swTileLocalX, swTileLocalY] for menuAction, or null if not found.
-     * Object center is tried first (fixes partial-tile objects); SW tile center is fallback (full/multi-tile).
+     * and returns [centerLocalX, centerLocalY, swLocalX, swLocalY, hashId] for menuAction. hashId is (int)(getHash()&0x7FFFFFFF)
+     * to identify the object instance; use it as menu identifier so we interact with the object, not the tile. null if not found.
      */
-    private int[] findWorldTileObjectLocalCoords(Object view, int objectId, int worldX, int worldY, int plane, String type) {
+    private int[] findWorldTileObjectInScene(Object view, int objectId, int worldX, int worldY, int plane, String type) {
         try {
             int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
             int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
@@ -1704,14 +1704,22 @@ final class StateSerializer {
                     int centerX = (Integer) localPoint.getClass().getMethod("getX").invoke(localPoint);
                     int centerY = (Integer) localPoint.getClass().getMethod("getY").invoke(localPoint);
                     Object wl = tileObj.getClass().getMethod("getWorldLocation").invoke(tileObj);
-                    if (wl == null) return new int[] { centerX, centerY, centerX, centerY };
-                    int wx = (Integer) wl.getClass().getMethod("getX").invoke(wl);
-                    int wy = (Integer) wl.getClass().getMethod("getY").invoke(wl);
-                    int sceneSwX = wx - baseX;
-                    int sceneSwY = wy - baseY;
-                    int swLocalX = (sceneSwX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
-                    int swLocalY = (sceneSwY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
-                    return new int[] { centerX, centerY, swLocalX, swLocalY };
+                    int swLocalX = centerX, swLocalY = centerY;
+                    if (wl != null) {
+                        int wx = (Integer) wl.getClass().getMethod("getX").invoke(wl);
+                        int wy = (Integer) wl.getClass().getMethod("getY").invoke(wl);
+                        int sceneSwX = wx - baseX;
+                        int sceneSwY = wy - baseY;
+                        swLocalX = (sceneSwX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+                        swLocalY = (sceneSwY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+                    }
+                    long hash = 0;
+                    try {
+                        Object h = tileObj.getClass().getMethod("getHash").invoke(tileObj);
+                        if (h instanceof Number) hash = ((Number) h).longValue();
+                    } catch (NoSuchMethodException ignored) { }
+                    int hashId = (int) (hash & 0x7FFFFFFF);
+                    return new int[] { centerX, centerY, swLocalX, swLocalY, hashId };
                 }
             }
         } catch (Exception ignored) { }
@@ -1744,17 +1752,19 @@ final class StateSerializer {
         final int LOCAL_COORD_BITS = 7;
         int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
         int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
-        // Prefer exact TileObject from scene; try object center first (partial-tile), then SW tile (full/multi-tile).
-        int[] fromScene = findWorldTileObjectLocalCoords(view, objectId, worldX, worldY, plane, type);
+        // Resolve the actual TileObject so we interact with the object, not the tile (use its hash as identifier).
+        int[] fromScene = findWorldTileObjectInScene(view, objectId, worldX, worldY, plane, type);
         int localSwX = localX;
         int localSwY = localY;
+        int objectIdentifier = objectId;
         if (fromScene != null) {
-            localX = fromScene[0];   // object center
+            localX = fromScene[0];
             localY = fromScene[1];
             if (fromScene.length >= 4) {
                 localSwX = fromScene[2];
                 localSwY = fromScene[3];
             }
+            if (fromScene.length >= 5 && fromScene[4] != 0) objectIdentifier = fromScene[4]; // hash id
         }
         // World objects: use direct mapping (no +1 shift).
         String menuActionName;
@@ -1793,28 +1803,42 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // When we resolved the TileObject: try object center first (partial-tile), then SW tile local, then scene coords.
-        int[] pFirst = fromScene != null ? new int[] { localX, localY } : new int[] { sceneX, sceneY };
-        int[] pSecond = fromScene != null ? new int[] { localSwX, localSwY } : new int[] { localX, localY };
-        int[] pThird = fromScene != null ? new int[] { sceneX, sceneY } : new int[] { sceneX, sceneY };
-        String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, pFirst[0], pFirst[1], menuActionEnum, objectId, -1, option, target, menuActionMethod);
+        // Use resolved object identity (hash) and object center so we click the object, not the tile.
+        int p0 = fromScene != null ? localX : sceneX;
+        int p1 = fromScene != null ? localY : sceneY;
+        String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, p0, p1, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
         if (err == null) return null;
-        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, pSecond[0], pSecond[1], menuActionEnum, objectId, -1, option, target, menuActionMethod);
+        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
         if (err == null) return null;
-        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, pThird[0], pThird[1], menuActionEnum, objectId, -1, option, target, menuActionMethod);
+        err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localSwX, localSwY, menuActionEnum, objectIdentifier, -1, option, target, menuActionMethod);
         if (err == null) return null;
         try {
-            menuActionMethod.invoke(client, pFirst[0], pFirst[1], menuActionEnum, objectId, -1, option, target);
+            menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectIdentifier, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, pSecond[0], pSecond[1], menuActionEnum, objectId, -1, option, target);
+                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectIdentifier, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
                 try {
-                    menuActionMethod.invoke(client, pThird[0], pThird[1], menuActionEnum, objectId, -1, option, target);
+                    menuActionMethod.invoke(client, localSwX, localSwY, menuActionEnum, objectIdentifier, -1, option, target);
                     return null;
                 } catch (java.lang.reflect.InvocationTargetException e3) {
+                    if (objectIdentifier != objectId) {
+                        try {
+                            menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectId, -1, option, target);
+                            return null;
+                        } catch (java.lang.reflect.InvocationTargetException e4) {
+                            try {
+                                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
+                                return null;
+                            } catch (java.lang.reflect.InvocationTargetException e5) {
+                                Throwable cause = e5.getCause();
+                                if (cause != null) throw new RuntimeException(cause);
+                                throw e5;
+                            }
+                        }
+                    }
                     Throwable cause = e3.getCause();
                     if (cause != null) throw new RuntimeException(cause);
                     throw e3;
@@ -1868,6 +1892,10 @@ final class StateSerializer {
         Runnable runOnClient = () -> {
             try {
                 String err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex);
+                if (err != null) {
+                    // NPC may have moved; retry once with fresh lookup (current position).
+                    err = doInvokeNpcAction(npcId, worldX, worldY, plane, actionIndex);
+                }
                 error.set(err);
             } catch (Throwable t) {
                 error.set(t.getMessage() != null ? t.getMessage() : t.getClass().getSimpleName());
@@ -1877,7 +1905,7 @@ final class StateSerializer {
         };
         try {
             clientThread.getClass().getMethod("invoke", Runnable.class).invoke(clientThread, runOnClient);
-            if (!latch.await(3, TimeUnit.SECONDS)) {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
                 return "Timeout";
             }
             return error.get();
@@ -1887,9 +1915,9 @@ final class StateSerializer {
     }
 
     /**
-     * Must be called on client thread. Finds an NPC in the scene matching (npcId, worldX, worldY, plane)
-     * and returns [npcIndex, localX, localY] for menuAction. The client uses the NPC's index in its
-     * cached array as the menu identifier. Returns null if not found.
+     * Must be called on client thread. Finds an NPC in the scene by npcId and plane; uses current position
+     * so we talk to the NPC where they are now (they may have moved since the list was serialized).
+     * Returns [npcIndex, localX, localY]. Prefers exact (worldX, worldY) match, else nearest NPC with that id.
      */
     private int[] findNpcInScene(Object view, int npcId, int worldX, int worldY, int plane) {
         try {
@@ -1898,6 +1926,9 @@ final class StateSerializer {
             if (npcsObj == null) return null;
             Method sizeMethod = npcsObj.getClass().getMethod("size");
             int size = ((Number) sizeMethod.invoke(npcsObj)).intValue();
+            int[] exact = null;
+            int[] nearest = null;
+            long nearestDistSq = Long.MAX_VALUE;
             for (int i = 0; i < size; i++) {
                 Object npc = npcsObj.getClass().getMethod("get", int.class).invoke(npcsObj, i);
                 if (npc == null) continue;
@@ -1909,15 +1940,26 @@ final class StateSerializer {
                 int wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
                 int wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
                 int p = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
-                if (wx != worldX || wy != worldY || p != plane) continue;
+                if (p != plane) continue;
                 Object indexObj = npc.getClass().getMethod("getIndex").invoke(npc);
                 int npcIndex = indexObj != null ? ((Number) indexObj).intValue() : i;
                 Object localPoint = npc.getClass().getMethod("getLocalLocation").invoke(npc);
                 if (localPoint == null) continue;
                 int lx = (Integer) localPoint.getClass().getMethod("getX").invoke(localPoint);
                 int ly = (Integer) localPoint.getClass().getMethod("getY").invoke(localPoint);
-                return new int[] { npcIndex, lx, ly };
+                int[] result = new int[] { npcIndex, lx, ly };
+                if (wx == worldX && wy == worldY) {
+                    exact = result;
+                    break;
+                }
+                long d = (long) (wx - worldX) * (wx - worldX) + (long) (wy - worldY) * (wy - worldY);
+                if (d < nearestDistSq) {
+                    nearestDistSq = d;
+                    nearest = result;
+                }
             }
+            if (exact != null) return exact;
+            return nearest;
         } catch (Exception ignored) { }
         return null;
     }
