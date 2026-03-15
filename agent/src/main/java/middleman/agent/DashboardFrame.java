@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicBoolean;
 public final class DashboardFrame {
 
     private static final int REFRESH_MS = 250;
+    private static final int RECONNECT_MS = 2000;
     private static final String BASE = "http://127.0.0.1";
 
     private final int port;
@@ -31,6 +32,7 @@ public final class DashboardFrame {
     private JCheckBox autoCheck;
     private JPanel contentPanel;
     private javax.swing.Timer refreshTimer;
+    private javax.swing.Timer reconnectTimer;
     private final AtomicBoolean loading = new AtomicBoolean(false);
     private volatile String npcSearchFilter = "";
     private volatile String worldObjectSearchFilter = "";
@@ -135,6 +137,8 @@ public final class DashboardFrame {
         frame.getContentPane().setBackground(bg);
 
         refreshTimer = new javax.swing.Timer(REFRESH_MS, e -> refreshOnce());
+        reconnectTimer = new javax.swing.Timer(RECONNECT_MS, e -> refreshOnce());
+        reconnectTimer.setRepeats(false);
         if (autoCheck.isSelected()) {
             refreshTimer.start();
         }
@@ -142,10 +146,12 @@ public final class DashboardFrame {
 
     private void toggleAuto() {
         if (autoCheck.isSelected()) {
+            reconnectTimer.stop();
             refreshTimer.start();
             refreshOnce();
         } else {
             refreshTimer.stop();
+            reconnectTimer.stop();
         }
     }
 
@@ -157,16 +163,33 @@ public final class DashboardFrame {
                 String json = fetch(url, "GET", null);
                 SwingUtilities.invokeLater(() -> {
                     loading.set(false);
-                    if (json != null) applyState(json);
-                    else setStatus(false, "Connection failed");
+                    if (json != null) {
+                        applyState(json);
+                        setStatus(true, "OK");
+                        if (autoCheck.isSelected()) {
+                            reconnectTimer.stop();
+                            if (!refreshTimer.isRunning()) refreshTimer.start();
+                        }
+                    } else {
+                        onConnectionFailed("Connection failed");
+                    }
                 });
             } catch (Exception e) {
                 SwingUtilities.invokeLater(() -> {
                     loading.set(false);
-                    setStatus(false, e.getMessage());
+                    onConnectionFailed(e.getMessage());
                 });
             }
         }).start();
+    }
+
+    private void onConnectionFailed(String message) {
+        setStatus(false, "Disconnected – reconnecting…");
+        if (autoCheck.isSelected()) {
+            refreshTimer.stop();
+            reconnectTimer.stop();
+            reconnectTimer.start();
+        }
     }
 
     private void applyState(String json) {
@@ -181,8 +204,6 @@ public final class DashboardFrame {
             addSection("NPCs", entitySectionWithSearch(root.getArray("npcs"), "npcId", "name", "worldX", "worldY", "plane", "actions", "npc"), true);
             addSection("World objects", worldObjectSectionWithSearch(root.getArray("worldObjects")), true);
             addSection("Ground items", groundItemSection(root.getArray("groundItems")), true);
-            addSection("World view", simpleSection(root.getObject("worldView"), "baseX", "baseY", "plane"), true);
-            setStatus(true, "OK");
             setStatus(true, "OK");
         } catch (Exception e) {
             addSection("Error", new JLabel("Parse error: " + e.getMessage()), false);
@@ -234,9 +255,11 @@ public final class DashboardFrame {
         p.setBackground(new Color(0x25, 0x25, 0x2b));
         p.setBorder(new EmptyBorder(2, 6, 2, 6));
         String state = root.getString("gameState");
-        String map = root.getString("mapName");
-        if (map == null || map.isEmpty()) map = root.getString("regionId") != null ? "Region: " + root.getString("regionId") : "";
-        JLabel l = new JLabel((state != null ? state : "—") + (map.isEmpty() ? "" : "  |  Map: " + map));
+        String regionId = root.getString("regionId");
+        String mapName = root.getString("mapName");
+        String regionPart = (regionId != null && !regionId.isEmpty()) ? "Region: " + regionId + (mapName != null && !mapName.isEmpty() ? " (" + mapName + ")" : "") : "";
+        String text = (state != null ? state : "—") + (regionPart.isEmpty() ? "" : "  |  " + regionPart);
+        JLabel l = new JLabel(text);
         l.setForeground(new Color(0xe0, 0xe0, 0xe0));
         p.add(l);
         return p;

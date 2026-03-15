@@ -12,6 +12,7 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.nio.charset.StandardCharsets;
 import java.util.concurrent.Executors;
+import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * HTTP server exposing game state as JSON. Uses JDK built-in HttpServer.
@@ -63,7 +64,13 @@ final class GameStateServer {
         server.createContext("/game/npc/action", this::handleNpcAction);
         server.createContext("/game/grounditem/action", this::handleGroundItemAction);
         server.createContext("/game/sprite/item", this::handleItemSprite);
-        server.setExecutor(null);
+        // Use executor with non-daemon threads so server keeps running after agent thread exits
+        AtomicInteger threadNumber = new AtomicInteger(0);
+        server.setExecutor(Executors.newCachedThreadPool(r -> {
+            Thread t = new Thread(r, "MiddleMan-HTTP-" + threadNumber.incrementAndGet());
+            t.setDaemon(false);
+            return t;
+        }));
         server.start();
         AgentLog.log("Game state API listening on http://127.0.0.1:" + port);
     }
