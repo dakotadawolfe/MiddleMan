@@ -1935,8 +1935,12 @@ final class StateSerializer {
             localX = fromScene[1];
             localY = fromScene[2];
         }
+        // Client menu order can differ from composition getActions() order (e.g. GE: Talk-to works as FIRST,
+        // but Exchange/History/Set are shifted — SECOND does nothing, THIRD→Exchange, FOURTH→History, FIFTH→Set).
+        // Map composition index 0→FIRST, 1→THIRD, 2→FOURTH, 3→FIFTH so the intended option fires.
         String[] names = { "NPC_FIRST_OPTION", "NPC_SECOND_OPTION", "NPC_THIRD_OPTION", "NPC_FOURTH_OPTION", "NPC_FIFTH_OPTION" };
-        String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
+        int menuActionIndex = actionIndex == 0 ? 0 : Math.min(actionIndex + 1, names.length - 1);
+        String menuActionName = names[menuActionIndex];
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
         @SuppressWarnings({ "unchecked", "rawtypes" })
