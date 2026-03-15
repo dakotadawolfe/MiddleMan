@@ -31,6 +31,7 @@ public final class DashboardFrame {
     private JLabel statusLabel;
     private JCheckBox autoCheck;
     private JPanel contentPanel;
+    private JScrollPane mainScrollPane;
     private javax.swing.Timer refreshTimer;
     private javax.swing.Timer reconnectTimer;
     private final AtomicBoolean loading = new AtomicBoolean(false);
@@ -127,11 +128,13 @@ public final class DashboardFrame {
         contentPanel.setLayout(new BoxLayout(contentPanel, BoxLayout.Y_AXIS));
         contentPanel.setBackground(bg);
         contentPanel.setForeground(fg);
-        JScrollPane scroll = new JScrollPane(contentPanel);
-        scroll.setBorder(null);
-        scroll.getViewport().setBackground(bg);
-        scroll.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        root.add(scroll, BorderLayout.CENTER);
+        mainScrollPane = new JScrollPane(contentPanel);
+        mainScrollPane.setBorder(null);
+        mainScrollPane.getViewport().setBackground(bg);
+        mainScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
+        mainScrollPane.getVerticalScrollBar().setUnitIncrement(WHEEL_SCROLL_STEP);
+        root.add(mainScrollPane, BorderLayout.CENTER);
+        contentPanel.addMouseWheelListener(e -> scrollScrollPane(mainScrollPane, e));
 
         frame.setContentPane(root);
         frame.getContentPane().setBackground(bg);
@@ -762,6 +765,33 @@ public final class DashboardFrame {
         }
         contentPanel.add(wrap);
         contentPanel.add(Box.createVerticalStrut(0));
+        enableWheelScroll(wrap, mainScrollPane);
+    }
+
+    private static final int WHEEL_SCROLL_STEP = 28;
+
+    private static void scrollScrollPane(JScrollPane scrollPane, java.awt.event.MouseWheelEvent e) {
+        JScrollBar bar = scrollPane.getVerticalScrollBar();
+        if (bar != null && bar.isEnabled()) {
+            int delta = -e.getUnitsToScroll() * WHEEL_SCROLL_STEP;
+            bar.setValue(Math.max(bar.getMinimum(), Math.min(bar.getMaximum() - bar.getVisibleAmount(), bar.getValue() + delta)));
+            e.consume();
+        }
+    }
+
+    /** Recursively add mouse wheel listener so scrolling works over any content, not just the scroll bar. */
+    private void enableWheelScroll(Container c, JScrollPane scrollPane) {
+        c.addMouseWheelListener(e -> scrollScrollPane(scrollPane, e));
+        for (Component ch : c.getComponents()) {
+            if (ch instanceof JScrollPane) {
+                JScrollPane inner = (JScrollPane) ch;
+                inner.getVerticalScrollBar().setUnitIncrement(WHEEL_SCROLL_STEP);
+                Component view = inner.getViewport().getView();
+                if (view instanceof Container) enableWheelScroll((Container) view, inner);
+            } else if (ch instanceof Container) {
+                enableWheelScroll((Container) ch, scrollPane);
+            }
+        }
     }
 
     private void setStatus(boolean ok, String msg) {
@@ -799,7 +829,7 @@ public final class DashboardFrame {
         @Override
         public Dimension getPreferredScrollableViewportSize() { return getPreferredSize(); }
         @Override
-        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 16; }
+        public int getScrollableUnitIncrement(Rectangle visibleRect, int orientation, int direction) { return 28; }
         @Override
         public int getScrollableBlockIncrement(Rectangle visibleRect, int orientation, int direction) { return visibleRect.height; }
     }
