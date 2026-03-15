@@ -43,6 +43,16 @@ All responses are JSON with `Content-Type: application/json` and `Access-Control
 
 **Example:** `curl http://127.0.0.1:8765/game/state`
 
+## Reverting menu-action changes
+
+If menu-action stability changes cause issues, you can revert to the previous state:
+
+```bash
+git checkout pre-menu-actions-stability
+```
+
+Tag `pre-menu-actions-stability` was created before implementing scene-resolved menu actions for world objects, NPCs, and ground items.
+
 ## Folder layout
 
 - **MiddleMan/agent/** – Java agent source and build. Output: `MiddleMan/agent/build/MiddleManAgent.jar`.

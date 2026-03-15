@@ -1683,8 +1683,7 @@ final class StateSerializer {
                         }
                     }
                     if (tileObj == null) continue;
-                    if ("gameObject".equals(type) && tileObj != null) { /* already matched above */ }
-                    else {
+                    if (!"gameObject".equals(type)) {
                         Object idObj = tileObj.getClass().getMethod("getId").invoke(tileObj);
                         int id = idObj != null ? ((Number) idObj).intValue() : -1;
                         if (id != objectId) continue;
@@ -1776,18 +1775,26 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Try 1: scene tile coords (param0=sceneX, param1=sceneY) - this order worked for actions
+        // When we resolved the TileObject from scene, prefer its local coords so the client targets the object not the tile
+        boolean useLocalFirst = (fromScene != null);
         try {
+            if (useLocalFirst) {
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+                return null;
+            }
             menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
-            // Try 2: local 1/128 coords (for clients that expect local)
             try {
-                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+                if (!useLocalFirst)
+                    menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
+                else
+                    menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
-                // Try 3: inject via menu entry with scene coords
-                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                if (err == null) return null;
+                err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                 if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
@@ -1859,6 +1866,42 @@ final class StateSerializer {
         }
     }
 
+    /**
+     * Must be called on client thread. Finds an NPC in the scene matching (npcId, worldX, worldY, plane)
+     * and returns [npcIndex, localX, localY] for menuAction. The client uses the NPC's index in its
+     * cached array as the menu identifier. Returns null if not found.
+     */
+    private int[] findNpcInScene(Object view, int npcId, int worldX, int worldY, int plane) {
+        try {
+            Method getNpcs = client.getClass().getMethod("getNpcs");
+            Object npcsObj = getNpcs.invoke(client);
+            if (npcsObj == null) return null;
+            Method sizeMethod = npcsObj.getClass().getMethod("size");
+            int size = ((Number) sizeMethod.invoke(npcsObj)).intValue();
+            for (int i = 0; i < size; i++) {
+                Object npc = npcsObj.getClass().getMethod("get", int.class).invoke(npcsObj, i);
+                if (npc == null) continue;
+                Object idObj = npc.getClass().getMethod("getId").invoke(npc);
+                int id = idObj != null ? ((Number) idObj).intValue() : -1;
+                if (id != npcId) continue;
+                Object loc = npc.getClass().getMethod("getWorldLocation").invoke(npc);
+                if (loc == null) continue;
+                int wx = (Integer) loc.getClass().getMethod("getX").invoke(loc);
+                int wy = (Integer) loc.getClass().getMethod("getY").invoke(loc);
+                int p = (Integer) loc.getClass().getMethod("getPlane").invoke(loc);
+                if (wx != worldX || wy != worldY || p != plane) continue;
+                Object indexObj = npc.getClass().getMethod("getIndex").invoke(npc);
+                int npcIndex = indexObj != null ? ((Number) indexObj).intValue() : i;
+                Object localPoint = npc.getClass().getMethod("getLocalLocation").invoke(npc);
+                if (localPoint == null) continue;
+                int lx = (Integer) localPoint.getClass().getMethod("getX").invoke(localPoint);
+                int ly = (Integer) localPoint.getClass().getMethod("getY").invoke(localPoint);
+                return new int[] { npcIndex, lx, ly };
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     /** Must be called on client thread. Returns null on success. */
     private String doInvokeNpcAction(int npcId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
@@ -1885,6 +1928,13 @@ final class StateSerializer {
         final int LOCAL_COORD_BITS = 7;
         int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
         int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        int identifier = npcId;
+        int[] fromScene = findNpcInScene(view, npcId, worldX, worldY, plane);
+        if (fromScene != null) {
+            identifier = fromScene[0];
+            localX = fromScene[1];
+            localY = fromScene[2];
+        }
         String[] names = { "NPC_FIRST_OPTION", "NPC_SECOND_OPTION", "NPC_THIRD_OPTION", "NPC_FOURTH_OPTION", "NPC_FIFTH_OPTION" };
         String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
         ClassLoader clientLoader = client.getClass().getClassLoader();
@@ -1920,15 +1970,24 @@ final class StateSerializer {
         String target = resolveNpcName(client, npcId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        boolean useLocalFirst = (fromScene != null);
         try {
-            menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, npcId, -1, option, target);
+            if (useLocalFirst)
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, identifier, -1, option, target);
+            else
+                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, identifier, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, localX, localY, menuActionEnum, npcId, -1, option, target);
+                if (!useLocalFirst)
+                    menuActionMethod.invoke(client, localX, localY, menuActionEnum, identifier, -1, option, target);
+                else
+                    menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, identifier, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
-                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, npcId, -1, option, target, menuActionMethod);
+                String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, identifier, -1, option, target, menuActionMethod);
+                if (err == null) return null;
+                err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, identifier, -1, option, target, menuActionMethod);
                 if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
@@ -1968,6 +2027,57 @@ final class StateSerializer {
         }
     }
 
+    /**
+     * Must be called on client thread. Verifies the tile at (worldX, worldY, plane) has a ground item
+     * with the given itemId and returns that tile's local coords [localX, localY] for menuAction, or null.
+     */
+    private int[] findGroundItemTileLocalCoords(Object view, int itemId, int worldX, int worldY, int plane) {
+        try {
+            Method getScene = view.getClass().getMethod("getScene");
+            Object scene = getScene.invoke(view);
+            if (scene == null) return null;
+            Object planeObj = view.getClass().getMethod("getPlane").invoke(view);
+            int currentPlane = planeObj != null ? ((Number) planeObj).intValue() : 0;
+            if (currentPlane != plane) return null;
+            int baseX = (Integer) view.getClass().getMethod("getBaseX").invoke(view);
+            int baseY = (Integer) view.getClass().getMethod("getBaseY").invoke(view);
+            int sceneX = worldX - baseX;
+            int sceneY = worldY - baseY;
+            Method getTiles = scene.getClass().getMethod("getTiles");
+            Object tilesObj = getTiles.invoke(scene);
+            if (tilesObj == null || !tilesObj.getClass().isArray()) return null;
+            Object planeRow = Array.get(tilesObj, currentPlane);
+            if (planeRow == null || !planeRow.getClass().isArray()) return null;
+            Object col = Array.get(planeRow, sceneX);
+            if (col == null || !col.getClass().isArray()) return null;
+            Object tile = Array.get(col, sceneY);
+            if (tile == null) return null;
+            Method getGroundItems = tile.getClass().getMethod("getGroundItems");
+            Object itemsObj = getGroundItems.invoke(tile);
+            if (itemsObj == null) return null;
+            int n;
+            if (itemsObj instanceof List) {
+                n = ((List<?>) itemsObj).size();
+            } else {
+                Method size = itemsObj.getClass().getMethod("size");
+                n = ((Number) size.invoke(itemsObj)).intValue();
+            }
+            for (int i = 0; i < n; i++) {
+                Object item = itemsObj instanceof List ? ((List<?>) itemsObj).get(i) : itemsObj.getClass().getMethod("get", int.class).invoke(itemsObj, i);
+                if (item == null) continue;
+                Object idObj = item.getClass().getMethod("getId").invoke(item);
+                int id = idObj != null ? ((Number) idObj).intValue() : -1;
+                if (id == itemId) {
+                    final int LOCAL_COORD_BITS = 7;
+                    int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+                    int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+                    return new int[] { localX, localY };
+                }
+            }
+        } catch (Exception ignored) { }
+        return null;
+    }
+
     private String doInvokeGroundItemAction(int itemId, int worldX, int worldY, int plane, int actionIndex) throws Exception {
         Method getView = client.getClass().getMethod("getTopLevelWorldView");
         Object view = getView.invoke(client);
@@ -1993,6 +2103,11 @@ final class StateSerializer {
         final int LOCAL_COORD_BITS = 7;
         int localX = (sceneX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
         int localY = (sceneY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
+        int[] fromScene = findGroundItemTileLocalCoords(view, itemId, worldX, worldY, plane);
+        if (fromScene != null) {
+            localX = fromScene[0];
+            localY = fromScene[1];
+        }
         String[] names = { "GROUND_ITEM_FIRST_OPTION", "GROUND_ITEM_SECOND_OPTION", "GROUND_ITEM_THIRD_OPTION", "GROUND_ITEM_FOURTH_OPTION", "GROUND_ITEM_FIFTH_OPTION" };
         String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
         ClassLoader clientLoader = client.getClass().getClassLoader();
@@ -2003,15 +2118,24 @@ final class StateSerializer {
         String target = resolveItemName(itemId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
+        boolean useLocalFirst = (fromScene != null);
         try {
-            menuActionMethod.invoke(client, localX, localY, menuActionEnum, itemId, -1, option, target);
+            if (useLocalFirst)
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, itemId, -1, option, target);
+            else
+                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, itemId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, itemId, -1, option, target);
+                if (!useLocalFirst)
+                    menuActionMethod.invoke(client, localX, localY, menuActionEnum, itemId, -1, option, target);
+                else
+                    menuActionMethod.invoke(client, sceneX, sceneY, menuActionEnum, itemId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
                 String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, itemId, -1, option, target, menuActionMethod);
+                if (err == null) return null;
+                err = invokeViaMenuEntry(client, clientLoader, menuActionClass, sceneX, sceneY, menuActionEnum, itemId, -1, option, target, menuActionMethod);
                 if (err == null) return null;
                 Throwable cause = e2.getCause();
                 if (cause != null) throw new RuntimeException(cause);
