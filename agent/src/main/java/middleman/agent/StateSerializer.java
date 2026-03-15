@@ -117,6 +117,29 @@ final class StateSerializer {
         REGION_NAMES.put(14679, "Motherlode Mine"); REGION_NAMES.put(14935, "Motherlode Mine"); REGION_NAMES.put(15191, "Motherlode Mine");
     }
 
+    /** Max varp index to serialize (getVarps() array may be large). */
+    private static final int VARPS_LIMIT = 2048;
+
+    /** Curated varbit IDs for minigames/combat/effects (Barrows, doors, puzzle, poison, etc.). */
+    private static final int[] CURATED_VARBIT_IDS = {
+        457, 458, 459, 460, 461, 462, 463, 464,  /* Barrows: brothers killed, monster count */
+        469, 470, 471, 472, 473, 474, 475, 476, 477, 478, 479, 480, 481, 482, 483, 484,  /* Barrows doors */
+        1394,  /* BARROWS_CHEST_OPEN */
+        4734, 4736, 4737, 4738, 4739, 4740, 4742, 4743,  /* Barrows old entrance, chambers, puzzle, ladder */
+        6251,  /* POISON_TYPE */
+    };
+
+    /** Interface group IDs we care about for containers (Barrows reward, bank). */
+    private static final int INTERFACE_BARROWS_REWARD = 155;
+    private static final int INTERFACE_BANK_MAIN = 12;
+
+    /** Inventory ID for Barrows reward chest (same as TRAIL_REWARDINV). */
+    private static final int INVENTORY_ID_BARROWS_REWARD = 141;
+    private static final int INVENTORY_ID_BANK = 95;
+
+    /** Max recent game messages to include. */
+    private static final int GAME_MESSAGES_LIMIT = 20;
+
     private final Object client;
     private final Object clientThread;
     private final Object itemManager;
@@ -136,6 +159,12 @@ final class StateSerializer {
         appendGameState(sb);
         appendMapInfo(sb);
         appendPlayerStats(sb);
+        appendVarps(sb);
+        appendVarbits(sb);
+        appendOpenWidgets(sb);
+        appendSkills(sb);
+        appendContainers(sb);
+        appendGameMessages(sb);
         sb.append(",\"localPlayer\":");
         appendLocalPlayer(sb);
         sb.append(",\"players\":");
@@ -253,6 +282,228 @@ final class StateSerializer {
             sb.append(",\"runEnergy\":").append(runEnergy).append("}");
         } catch (Exception e) {
             sb.append(",\"playerStats\":null");
+        }
+    }
+
+    /** Appends ,"varps":[ ... ] from Client#getVarps() (capped at VARPS_LIMIT). */
+    private void appendVarps(StringBuilder sb) {
+        try {
+            Method getVarps = client.getClass().getMethod("getVarps");
+            Object arr = getVarps.invoke(client);
+            if (arr == null || !arr.getClass().isArray()) {
+                sb.append(",\"varps\":null");
+                return;
+            }
+            int len = Math.min(Array.getLength(arr), VARPS_LIMIT);
+            sb.append(",\"varps\":[");
+            for (int i = 0; i < len; i++) {
+                if (i > 0) sb.append(",");
+                Object v = Array.get(arr, i);
+                sb.append(v instanceof Number ? ((Number) v).intValue() : 0);
+            }
+            sb.append("]");
+        } catch (Exception e) {
+            sb.append(",\"varps\":null");
+        }
+    }
+
+    /** Appends ,"varbits":{ "id": value, ... } for curated varbit IDs. */
+    private void appendVarbits(StringBuilder sb) {
+        try {
+            Method getVarbitValue = client.getClass().getMethod("getVarbitValue", int.class);
+            sb.append(",\"varbits\":{");
+            boolean first = true;
+            for (int id : CURATED_VARBIT_IDS) {
+                if (!first) sb.append(",");
+                first = false;
+                int value = ((Number) getVarbitValue.invoke(client, id)).intValue();
+                sb.append("\"").append(id).append("\":").append(value);
+            }
+            sb.append("}");
+        } catch (Exception e) {
+            sb.append(",\"varbits\":{}");
+        }
+    }
+
+    /** Appends ,"openWidgetGroupIds":[ ... ] from getWidgetRoots() (unique group IDs). */
+    private void appendOpenWidgets(StringBuilder sb) {
+        try {
+            Method getRoots = client.getClass().getMethod("getWidgetRoots");
+            Object roots = getRoots.invoke(client);
+            if (roots == null || !roots.getClass().isArray()) {
+                sb.append(",\"openWidgetGroupIds\":[]");
+                return;
+            }
+            Set<Integer> groupIds = new HashSet<>();
+            int len = Array.getLength(roots);
+            for (int i = 0; i < len; i++) {
+                Object w = Array.get(roots, i);
+                if (w == null) continue;
+                try {
+                    Method getId = w.getClass().getMethod("getId");
+                    int packed = ((Number) getId.invoke(w)).intValue();
+                    int groupId = (packed >> 16) & 0xFFFF;
+                    groupIds.add(groupId);
+                } catch (Exception ignored) { }
+            }
+            sb.append(",\"openWidgetGroupIds\":[");
+            List<Integer> sorted = new ArrayList<>(groupIds);
+            Collections.sort(sorted);
+            for (int j = 0; j < sorted.size(); j++) {
+                if (j > 0) sb.append(",");
+                sb.append(sorted.get(j));
+            }
+            sb.append("]");
+        } catch (Exception e) {
+            sb.append(",\"openWidgetGroupIds\":[]");
+        }
+    }
+
+    /** Appends ,"skills":[ { "name", "boosted", "real" }, ... ] for all Skill enum values. */
+    private void appendSkills(StringBuilder sb) {
+        try {
+            ClassLoader loader = client.getClass().getClassLoader();
+            Class<?> skillClass = Class.forName("net.runelite.api.Skill", false, loader);
+            Method valuesMethod = skillClass.getMethod("values");
+            Object[] skills = (Object[]) valuesMethod.invoke(null);
+            Method getBoosted = client.getClass().getMethod("getBoostedSkillLevel", skillClass);
+            Method getReal = client.getClass().getMethod("getRealSkillLevel", skillClass);
+            Method getNameMethod = skillClass.getMethod("getName");
+            sb.append(",\"skills\":[");
+            for (int i = 0; i < skills.length; i++) {
+                if (i > 0) sb.append(",");
+                Object skill = skills[i];
+                if (skill == null) continue;
+                String name = getNameMethod.invoke(skill) != null ? String.valueOf(getNameMethod.invoke(skill)) : skill.toString();
+                int boosted = ((Number) getBoosted.invoke(client, skill)).intValue();
+                int real = ((Number) getReal.invoke(client, skill)).intValue();
+                sb.append("{\"name\":\"").append(escape(name)).append("\",\"boosted\":").append(boosted).append(",\"real\":").append(real).append("}");
+            }
+            sb.append("]");
+        } catch (Exception e) {
+            sb.append(",\"skills\":[]");
+        }
+    }
+
+    /** Appends ,"containers":{ "barrowsReward": [...], "bank": [...] } when those interfaces are open. */
+    private void appendContainers(StringBuilder sb) {
+        sb.append(",\"containers\":{");
+        try {
+            Method getRoots = client.getClass().getMethod("getWidgetRoots");
+            Object roots = getRoots.invoke(client);
+            Set<Integer> openGroups = new HashSet<>();
+            if (roots != null && roots.getClass().isArray()) {
+                for (int i = 0; i < Array.getLength(roots); i++) {
+                    Object w = Array.get(roots, i);
+                    if (w != null) {
+                        try {
+                            int packed = ((Number) w.getClass().getMethod("getId").invoke(w)).intValue();
+                            openGroups.add((packed >> 16) & 0xFFFF);
+                        } catch (Exception ignored) { }
+                    }
+                }
+            }
+            boolean needComma = false;
+            if (openGroups.contains(INTERFACE_BARROWS_REWARD)) {
+                String items = buildContainerItemsJson(INVENTORY_ID_BARROWS_REWARD);
+                if (items != null) {
+                    sb.append("\"barrowsReward\":").append(items);
+                    needComma = true;
+                }
+            }
+            if (openGroups.contains(INTERFACE_BANK_MAIN)) {
+                String items = buildContainerItemsJson(INVENTORY_ID_BANK);
+                if (items != null) {
+                    if (needComma) sb.append(",");
+                    sb.append("\"bank\":").append(items);
+                }
+            }
+        } catch (Exception ignored) { }
+        sb.append("}");
+    }
+
+    /** Builds JSON array of items for a container by inventory id; null on error. */
+    private String buildContainerItemsJson(int inventoryId) {
+        try {
+            Method getContainer = client.getClass().getMethod("getItemContainer", int.class);
+            Object container = getContainer.invoke(client, inventoryId);
+            if (container == null) return "[]";
+            Method getItems = container.getClass().getMethod("getItems");
+            Object items = getItems.invoke(container);
+            if (items == null || !items.getClass().isArray()) return "[]";
+            StringBuilder out = new StringBuilder("[");
+            int len = Array.getLength(items);
+            for (int i = 0; i < len; i++) {
+                Object item = Array.get(items, i);
+                if (i > 0) out.append(",");
+                if (item == null) {
+                    out.append("{\"id\":0,\"quantity\":0,\"name\":\"\"}");
+                } else {
+                    int id = ((Number) item.getClass().getMethod("getId").invoke(item)).intValue();
+                    int qty = ((Number) item.getClass().getMethod("getQuantity").invoke(item)).intValue();
+                    if (id <= 0) { out.append("{\"id\":0,\"quantity\":0,\"name\":\"\"}"); continue; }
+                    String name = resolveItemName(id);
+                    out.append("{\"id\":").append(id).append(",\"quantity\":").append(qty).append(",\"name\":\"").append(escape(name)).append("\"}");
+                }
+            }
+            out.append("]");
+            return out.toString();
+        } catch (Exception e) {
+            return "[]";
+        }
+    }
+
+    /** Appends ,"gameMessages":[ { "type", "name", "value", "timestamp" }, ... ] (last N messages). */
+    private void appendGameMessages(StringBuilder sb) {
+        try {
+            Method getMessages = client.getClass().getMethod("getMessages");
+            Object table = getMessages.invoke(client);
+            if (table == null) {
+                sb.append(",\"gameMessages\":[]");
+                return;
+            }
+            Method iteratorMethod = table.getClass().getMethod("iterator");
+            Iterator<?> it = (Iterator<?>) iteratorMethod.invoke(table);
+            List<Object[]> list = new ArrayList<>();
+            Method getType = null;
+            Method getName = null;
+            Method getValue = null;
+            Method getTimestamp = null;
+            while (it.hasNext()) {
+                Object node = it.next();
+                if (node == null) continue;
+                try {
+                    if (getType == null) {
+                        getType = node.getClass().getMethod("getType");
+                        getName = node.getClass().getMethod("getName");
+                        getValue = node.getClass().getMethod("getValue");
+                        getTimestamp = node.getClass().getMethod("getTimestamp");
+                    }
+                    Object type = getType.invoke(node);
+                    String typeStr = type != null ? String.valueOf(type) : "";
+                    Object nameObj = getName.invoke(node);
+                    String name = nameObj != null ? String.valueOf(nameObj) : "";
+                    Object valueObj = getValue.invoke(node);
+                    String value = valueObj != null ? String.valueOf(valueObj) : "";
+                    Object ts = getTimestamp.invoke(node);
+                    int timestamp = ts instanceof Number ? ((Number) ts).intValue() : 0;
+                    list.add(new Object[]{ typeStr, name, value, timestamp });
+                } catch (Exception ignored) { }
+            }
+            int from = Math.max(0, list.size() - GAME_MESSAGES_LIMIT);
+            sb.append(",\"gameMessages\":[");
+            for (int i = from; i < list.size(); i++) {
+                if (i > from) sb.append(",");
+                Object[] row = list.get(i);
+                String typeStr = (String) row[0];
+                String name = (String) row[1];
+                String value = (String) row[2];
+                int timestamp = (Integer) row[3];
+                sb.append("{\"type\":\"").append(escape(typeStr)).append("\",\"name\":\"").append(escape(name)).append("\",\"value\":\"").append(escape(value)).append("\",\"timestamp\":").append(timestamp).append("}");
+            }
+            sb.append("]");
+        } catch (Exception e) {
+            sb.append(",\"gameMessages\":[]");
         }
     }
 

@@ -22,6 +22,11 @@ public final class ReloadRunner {
             AgentLog.log("Client found, starting HTTP server.");
             GameStateServer server = new GameStateServer(discovery.getClient(), discovery.getClientThread(), discovery.getItemManager(), port);
             server.start();
+            try {
+                javax.swing.SwingUtilities.invokeLater(() -> DashboardFrame.show(port));
+            } catch (Throwable guiErr) {
+                AgentLog.log("Could not open dashboard window: " + guiErr.getMessage());
+            }
         } catch (Throwable t) {
             AgentLog.log("Error: " + t.getMessage(), t);
         }
