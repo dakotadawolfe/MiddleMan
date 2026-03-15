@@ -1620,8 +1620,7 @@ final class StateSerializer {
 
     /**
      * Must be called on client thread. Finds a TileObject in the scene matching (objectId, worldX, worldY, plane, type)
-     * and returns [centerLocalX, centerLocalY, swLocalX, swLocalY, hashId] for menuAction. hashId is (int)(getHash()&0x7FFFFFFF)
-     * to identify the object instance; use it as menu identifier so we interact with the object, not the tile. null if not found.
+     * and returns [centerLocalX, centerLocalY, swLocalX, swLocalY, swSceneX, swSceneY] for menuAction, or null.
      */
     private int[] findWorldTileObjectInScene(Object view, int objectId, int worldX, int worldY, int plane, String type) {
         try {
@@ -1713,13 +1712,15 @@ final class StateSerializer {
                         swLocalX = (sceneSwX << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
                         swLocalY = (sceneSwY << LOCAL_COORD_BITS) + (1 << (LOCAL_COORD_BITS - 1));
                     }
-                    long hash = 0;
-                    try {
-                        Object h = tileObj.getClass().getMethod("getHash").invoke(tileObj);
-                        if (h instanceof Number) hash = ((Number) h).longValue();
-                    } catch (NoSuchMethodException ignored) { }
-                    int hashId = (int) (hash & 0x7FFFFFFF);
-                    return new int[] { centerX, centerY, swLocalX, swLocalY, hashId };
+                    int swSceneX = x;
+                    int swSceneY = y;
+                    if (wl != null) {
+                        int wx = (Integer) wl.getClass().getMethod("getX").invoke(wl);
+                        int wy = (Integer) wl.getClass().getMethod("getY").invoke(wl);
+                        swSceneX = wx - baseX;
+                        swSceneY = wy - baseY;
+                    }
+                    return new int[] { centerX, centerY, swLocalX, swLocalY, swSceneX, swSceneY };
                 }
             }
         } catch (Exception ignored) { }
@@ -1756,6 +1757,8 @@ final class StateSerializer {
         int[] fromScene = findWorldTileObjectInScene(view, objectId, worldX, worldY, plane, type);
         int localSwX = localX;
         int localSwY = localY;
+        int sceneObjX = sceneX;
+        int sceneObjY = sceneY;
         if (fromScene != null) {
             localX = fromScene[0];
             localY = fromScene[1];
@@ -1763,19 +1766,17 @@ final class StateSerializer {
                 localSwX = fromScene[2];
                 localSwY = fromScene[3];
             }
+            if (fromScene.length >= 6) {
+                sceneObjX = fromScene[4];
+                sceneObjY = fromScene[5];
+            }
         }
         else {
             return "Object instance not found";
         }
         // World objects: use direct mapping (no +1 shift).
-        String menuActionName;
-        if ("gameObject".equals(type)) {
-            String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
-        } else {
-            String[] names = { "WORLD_ENTITY_FIRST_OPTION", "WORLD_ENTITY_SECOND_OPTION", "WORLD_ENTITY_THIRD_OPTION", "WORLD_ENTITY_FOURTH_OPTION", "WORLD_ENTITY_FIFTH_OPTION" };
-            menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
-        }
+        String[] names = { "GAME_OBJECT_FIRST_OPTION", "GAME_OBJECT_SECOND_OPTION", "GAME_OBJECT_THIRD_OPTION", "GAME_OBJECT_FOURTH_OPTION", "GAME_OBJECT_FIFTH_OPTION" };
+        String menuActionName = actionIndex < names.length ? names[actionIndex] : names[0];
         ClassLoader clientLoader = client.getClass().getClassLoader();
         Class<?> menuActionClass = clientLoader.loadClass("net.runelite.api.MenuAction");
         @SuppressWarnings({ "unchecked", "rawtypes" })
@@ -1804,19 +1805,22 @@ final class StateSerializer {
         String target = resolveObjectName(client, objectId);
         if (target == null) target = "";
         Method menuActionMethod = client.getClass().getMethod("menuAction", int.class, int.class, menuActionClass, int.class, int.class, String.class, String.class);
-        // Strict object-based interaction: use resolved object coordinates only.
-        int p0 = localX;
-        int p1 = localY;
+        // Strict object-based interaction: use coordinates derived from resolved object only.
+        // RuneLite object entries use scene tile param0/param1 for object interactions.
+        int p0 = sceneObjX;
+        int p1 = sceneObjY;
         try {
             menuActionMethod.invoke(client, p0, p1, menuActionEnum, objectId, -1, option, target);
             return null;
         } catch (java.lang.reflect.InvocationTargetException e1) {
             try {
-                menuActionMethod.invoke(client, localSwX, localSwY, menuActionEnum, objectId, -1, option, target);
+                menuActionMethod.invoke(client, localX, localY, menuActionEnum, objectId, -1, option, target);
                 return null;
             } catch (java.lang.reflect.InvocationTargetException e2) {
                 try {
                     String err = invokeViaMenuEntry(client, clientLoader, menuActionClass, p0, p1, menuActionEnum, objectId, -1, option, target, menuActionMethod);
+                    if (err == null) return null;
+                    err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localX, localY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                     if (err == null) return null;
                     err = invokeViaMenuEntry(client, clientLoader, menuActionClass, localSwX, localSwY, menuActionEnum, objectId, -1, option, target, menuActionMethod);
                     if (err == null) return null;
