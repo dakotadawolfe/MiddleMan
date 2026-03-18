@@ -160,6 +160,11 @@ public final class DashboardFrame {
 
     private void refreshOnce() {
         if (loading.getAndSet(true)) return;
+        String focusId = getCurrentFocusId();
+        if ("npcSearch".equals(focusId) || "worldObjectSearch".equals(focusId)) {
+            loading.set(false);
+            return;
+        }
         String url = base() + "/game/state?t=" + System.currentTimeMillis();
         new Thread(() -> {
             try {
