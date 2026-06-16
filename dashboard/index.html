@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
+  <title>MiddleMan – Game State</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      margin: 0;
+      padding: 12px 16px;
+      background: #1a1a1e;
+      color: #e0e0e0;
+      min-height: 100vh;
+    }
+    h1 { font-size: 1.25rem; margin: 0 0 12px 0; color: #7dd3fc; }
+    .toolbar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-wrap: wrap;
+      margin-bottom: 12px;
+    }
+    input[type="number"] { width: 72px; padding: 6px 8px; background: #2d2d33; border: 1px solid #444; color: #e0e0e0; border-radius: 4px; }
+    button {
+      padding: 6px 12px;
+      background: #0ea5e9;
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 13px;
+    }
+    button:hover { background: #0284c7; }
+    button.secondary { background: #374151; }
+    button.secondary:hover { background: #4b5563; }
+    label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+    .status {
+      font-size: 12px;
+      padding: 4px 8px;
+      border-radius: 4px;
+      background: #2d2d33;
+    }
+    .status.ok { color: #4ade80; }
+    .status.err { color: #f87171; }
+    .status.loading { color: #94a3b8; }
+    section {
+      background: #25252b;
+      border: 1px solid #333;
+      border-radius: 6px;
+      padding: 10px 12px;
+      margin-bottom: 10px;
+    }
+    section h2 { font-size: 0.9rem; margin: 0 0 8px 0; color: #94a3b8; font-weight: 600; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 8px; }
+    .card {
+      background: #1e1e24;
+      padding: 8px 10px;
+      border-radius: 4px;
+      font-size: 12px;
+    }
+    .card strong { color: #94a3b8; }
+    pre { margin: 0; font-size: 11px; overflow-x: auto; white-space: pre-wrap; word-break: break-all; }
+    .empty { color: #64748b; font-style: italic; }
+    .world-object-card { cursor: pointer; user-select: none; }
+    .world-object-card:hover { outline: 1px solid #475569; }
+    .world-object-card .object-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
+    .world-object-card.expanded .object-actions { display: block; }
+    .object-action-link, .npc-action-link, .ground-item-action-link {
+      cursor: pointer; text-decoration: underline; color: #7dd3fc; margin-right: 4px;
+      -webkit-user-select: none; user-select: none;
+    }
+    .object-action-link:hover, .npc-action-link:hover, .ground-item-action-link:hover { color: #bae6fd; }
+    .object-action-link:active, .npc-action-link:active, .ground-item-action-link:active { color: #bae6fd; }
+    .object-action-link.sending, .npc-action-link.sending, .ground-item-action-link.sending { pointer-events: none; opacity: 0.7; }
+    .ground-item-card { cursor: pointer; user-select: none; }
+    .ground-item-card:hover { outline: 1px solid #475569; }
+    .ground-item-card .ground-item-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
+    .ground-item-card.expanded .ground-item-actions { display: block; }
+    .npc-card { cursor: pointer; user-select: none; }
+    .npc-card:hover { outline: 1px solid #475569; }
+    .npc-card .npc-actions { display: none; margin-top: 6px; padding-top: 6px; border-top: 1px solid #333; font-size: 11px; color: #94a3b8; }
+    .npc-card.expanded .npc-actions { display: block; }
+    .item-icon { width: 24px; height: 24px; object-fit: contain; vertical-align: middle; margin-right: 6px; }
+    .card-with-icon { display: flex; align-items: flex-start; gap: 6px; }
+    .card-with-icon .item-icon { flex-shrink: 0; }
+  </style>
+</head>
+<body>
+  <h1>MiddleMan – Game State <span id="agentVersion" style="font-size:0.6em;color:#94a3b8;font-weight:400"></span></h1>
+  <div class="toolbar">
+    <label>Port: <input type="number" id="port" value="8765" min="1" max="65535"></label>
+    <button id="refresh">Refresh</button>
+    <label><input type="checkbox" id="auto" checked> Auto (every tick)</label>
+    <span class="status loading" id="status">Loading…</span>
+  </div>
+  <section>
+    <h2>Game state</h2>
+    <div id="gameState" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Player</h2>
+    <div id="localPlayer" class="empty">—</div>
+    <h3 style="margin:12px 0 6px 0;font-size:0.85rem;color:#94a3b8">Equipped</h3>
+    <div id="equipment" class="empty">—</div>
+    <h3 style="margin:12px 0 6px 0;font-size:0.85rem;color:#94a3b8">Inventory</h3>
+    <div id="inventory" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Players</h2>
+    <div id="players" class="empty">—</div>
+  </section>
+  <section>
+    <h2>NPCs <span style="font-weight:400;color:#64748b;font-size:0.75rem">(ID and position under each)</span></h2>
+    <div id="npcs" class="empty">—</div>
+  </section>
+  <section>
+    <h2>World objects <span style="font-weight:400;color:#64748b;font-size:0.75rem">(doors, stairs, game objects, walls, ground, decorative)</span></h2>
+    <div id="worldObjects" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Ground items <span style="font-weight:400;color:#64748b;font-size:0.75rem">(items dropped on the ground)</span></h2>
+    <div id="groundItems" class="empty">—</div>
+  </section>
+  <section>
+    <h2>World view</h2>
+    <div id="worldView" class="empty">—</div>
+  </section>
+  <section>
+    <h2>Camera</h2>
+    <div id="camera" class="empty">—</div>
+  </section>
+
+  <script>
+    const portEl = document.getElementById('port');
+    const refreshEl = document.getElementById('refresh');
+    const autoEl = document.getElementById('auto');
+    const statusEl = document.getElementById('status');
+
+    window._pauseRefresh = false;
+    function stopAutoRefresh() {
+      if (window._mid) { clearInterval(window._mid); window._mid = null; }
+    }
+    function pauseAutoRefresh() {
+      window._pauseRefresh = true;
+      stopAutoRefresh();
+    }
+    function resumeAutoRefresh() {
+      window._pauseRefresh = false;
+      if (autoEl.checked) {
+        stopAutoRefresh();
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      }
+    }
+    function unpauseAutoRefresh() {
+      window._pauseRefresh = false;
+      document.querySelectorAll('.world-object-card.expanded, .npc-card.expanded, .ground-item-card.expanded').forEach(function (c) { c.classList.remove('expanded'); });
+      if (autoEl.checked) {
+        stopAutoRefresh();
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      }
+    }
+
+    function base() { return 'http://127.0.0.1:' + (portEl.value || '8765'); }
+
+    const loadStartTime = Date.now();
+    const LOADING_TIMEOUT_MS = 10000;
+
+    function setStatus(ok, msg) {
+      statusEl.textContent = msg || (ok ? 'OK' : 'Error');
+      statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+    }
+    function setStatusLoading() {
+      statusEl.textContent = 'Loading…';
+      statusEl.className = 'status loading';
+    }
+
+    function renderGameState(d) {
+      const el = document.getElementById('gameState');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      el.className = '';
+      let mapLine = '<br><span style="color:#7dd3fc;font-size:0.9em">';
+      if (d.mapName != null && d.mapName !== '') {
+        mapLine += 'Map: ' + escapeHtml(d.mapName);
+      } else if (d.regionId != null && d.regionId !== '') {
+        mapLine += 'Region: ' + escapeHtml(String(d.regionId));
+      } else {
+        mapLine += 'Map: —';
+      }
+      mapLine += '</span>';
+      el.innerHTML = '<strong>' + (d.gameState || '—') + '</strong>' + mapLine;
+    }
+
+    function renderLocalPlayer(d) {
+      const el = document.getElementById('localPlayer');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const p = d.localPlayer;
+      if (!p || p.error) { el.textContent = p?.error || 'Not in game'; el.className = 'empty'; return; }
+      el.className = '';
+      const s = d.playerStats || {};
+      const hpStr = (s.hitpoints != null && s.maxHitpoints != null) ? (s.hitpoints + ' / ' + s.maxHitpoints) : (s.hitpoints != null ? s.hitpoints : '—');
+      const prayStr = (s.prayerPoints != null && s.maxPrayer != null) ? (s.prayerPoints + ' / ' + s.maxPrayer) : (s.prayerPoints != null ? s.prayerPoints : '—');
+      const runStr = (s.runEnergy != null) ? (s.runEnergy + '%') : '—';
+      const statsCards = '<div class="card"><strong>Hitpoints</strong><br>' + hpStr + '</div>' +
+        '<div class="card"><strong>Prayer</strong><br>' + prayStr + '</div>' +
+        '<div class="card"><strong>Run energy</strong><br>' + runStr + '</div>';
+      el.innerHTML = '<div class="grid"><div class="card"><strong>Name</strong><br>' + (p.name ?? '—') + '</div>' +
+        '<div class="card"><strong>Position</strong><br>' + [p.worldX, p.worldY, p.plane].filter(Boolean).join(', ') + '</div>' +
+        '<div class="card"><strong>Animation</strong><br>' + (p.animation ?? '—') + '</div>' +
+        statsCards + '</div>';
+    }
+
+    function renderEquipment(d) {
+      const el = document.getElementById('equipment');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const arr = d.equipment;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      el.className = '';
+      const slotLabels = { HEAD: 'Head', CAPE: 'Cape', AMULET: 'Amulet', WEAPON: 'Weapon', BODY: 'Body', SHIELD: 'Shield', ARMS: 'Arms', LEGS: 'Legs', HAIR: 'Hair', GLOVES: 'Gloves', BOOTS: 'Boots', JAW: 'Jaw', RING: 'Ring', AMMO: 'Ammo' };
+      el.innerHTML = '<div class="grid">' + arr.map(x => {
+        const label = slotLabels[x.slot] || x.slot || ('Slot ' + (x.slotIndex ?? ''));
+        const hasItem = x.id != null && x.id > 0;
+        const namePart = hasItem ? (x.name ? x.id + ' (' + escapeHtml(x.name) + ')' : x.id) : '—';
+        const qty = hasItem && x.quantity > 1 ? ' × ' + x.quantity : '';
+        const iconUrl = hasItem ? (base() + '/game/sprite/item/' + x.id) : '';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        return '<div class="card card-with-icon">' + iconImg + '<div><strong style="color:#64748b;font-size:11px">' + label + '</strong><br>' + namePart + qty + '</div></div>';
+      }).join('') + '</div>';
+    }
+
+    function renderList(id, arr, keys) {
+      const el = document.getElementById(id);
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid">' + arr.slice(0, 50).map(x => {
+        const parts = (keys || ['name', 'worldX', 'worldY', 'npcId']).map(k => (x[k] != null ? k + ': ' + x[k] : '')).filter(Boolean);
+        return '<div class="card">' + (parts.join('<br>') || JSON.stringify(x)) + '</div>';
+      }).join('') + '</div>' + (arr.length > 50 ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing 50)</p>' : '');
+    }
+
+    function renderNpcs(d) {
+      const el = document.getElementById('npcs');
+      const arr = d?.npcs;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      const maxShow = 80;
+      el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
+        const idPart = x.npcId != null ? (x.name ? x.npcId + ' (' + x.name + ')' : 'ID: ' + x.npcId) : (x.name || '—');
+        const worldPos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
+        const localPos = [x.localX, x.localY].filter(v => v != null);
+        const posLine = worldPos.length >= 2 ? worldPos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : (localPos.length >= 2 ? 'Position (local): ' + localPos.join(', ') + (x.plane != null ? ', plane ' + x.plane : '') : '');
+        const actions = Array.isArray(x.actions) ? x.actions.filter(Boolean) : [];
+        const actionsHtml = actions.length ? '<div class="npc-actions"><strong>Actions:</strong> ' + actions.map((a, idx) =>
+          '<span class="npc-action-link" data-id="' + (x.npcId ?? '') + '" data-world-x="' + (x.worldX ?? '') + '" data-world-y="' + (x.worldY ?? '') + '" data-plane="' + (x.plane ?? '0') + '" data-action-index="' + idx + '">' + escapeHtml(String(a)) + '</span>'
+        ).join(', ') + '</div>' : '';
+        return '<div class="card npc-card" tabindex="0">' +
+          '<strong>' + idPart + '</strong>' +
+          (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          actionsHtml + '</div>';
+      }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.npc-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('npc-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            pauseAutoRefresh();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/npc/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
+          }
+        });
+      });
+    }
+
+    function renderWorldView(d) {
+      const el = document.getElementById('worldView');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const w = d.worldView;
+      if (!w) { el.textContent = '—'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="card"><strong>Base</strong> ' + [w.baseX, w.baseY].join(', ') + ' &nbsp; <strong>Plane</strong> ' + (w.plane ?? '—') + '</div>';
+    }
+
+    function renderInventory(d) {
+      const el = document.getElementById('inventory');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const inv = d.inventory;
+      if (!inv || !Array.isArray(inv)) { el.textContent = '—'; el.className = 'empty'; return; }
+      const filled = inv.filter(x => x && (x.id > 0 || x.quantity > 0));
+      if (filled.length === 0) { el.textContent = 'Empty'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="grid">' + filled.map(x => {
+        const slot = x.slot != null ? 'Slot ' + x.slot + ': ' : '';
+        const namePart = x.name ? x.id + ' (' + x.name + ')' : x.id;
+        let iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        if (iconUrl && x.noted) iconUrl += '?noted=1';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        return '<div class="card card-with-icon">' + iconImg + '<div><strong>' + slot + namePart + '</strong> × ' + (x.quantity ?? 0) + '</div></div>';
+      }).join('') + '</div>';
+    }
+
+    function renderCamera(d) {
+      const el = document.getElementById('camera');
+      if (!d || d.error) { el.textContent = d?.error || '—'; el.className = 'empty'; return; }
+      const c = d.camera;
+      if (!c || c.error) { el.textContent = c?.error || '—'; el.className = 'empty'; return; }
+      el.className = '';
+      el.innerHTML = '<div class="card">x: ' + c.x + ' y: ' + c.y + ' z: ' + c.z + '<br>pitch: ' + c.pitch + ' yaw: ' + c.yaw + '</div>';
+    }
+
+    function renderWorldObjects(d) {
+      const el = document.getElementById('worldObjects');
+      const arr = d?.worldObjects;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      const maxShow = 80;
+      el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
+        const type = x.type || 'object';
+        const idPart = (x.name && x.name !== 'null') ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
+        const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
+        const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
+        const actions = Array.isArray(x.actions) ? x.actions.filter(Boolean) : [];
+        const objType = (x.type && typeof x.type === 'string') ? x.type : 'gameObject';
+        const actionsHtml = actions.length ? '<div class="object-actions"><strong>Actions:</strong> ' + actions.map((a, idx) =>
+          '<span class="object-action-link" data-id="' + (x.id ?? '') + '" data-world-x="' + (x.worldX ?? '') + '" data-world-y="' + (x.worldY ?? '') + '" data-plane="' + (x.plane ?? '0') + '" data-type="' + escapeHtml(objType) + '" data-action-index="' + idx + '">' + escapeHtml(String(a)) + '</span>'
+        ).join(', ') + '</div>' : '';
+        return '<div class="card world-object-card" tabindex="0">' +
+          '<strong>' + type + ': ' + idPart + '</strong>' +
+          (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          actionsHtml + '</div>';
+      }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.world-object-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('object-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            pauseAutoRefresh();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              type: link.getAttribute('data-type') || 'gameObject',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/worldobject/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
+          }
+        });
+      });
+    }
+
+    function formatPrice(n) {
+      if (n == null || n === undefined || Number.isNaN(n)) return '—';
+      const num = Number(n);
+      if (num >= 1e6) return (num / 1e6).toFixed(1).replace(/\.0$/, '') + 'm';
+      if (num >= 1e3) return (num / 1e3).toFixed(1).replace(/\.0$/, '') + 'k';
+      return String(num);
+    }
+    var GROUND_ITEM_ACTIONS = ['Take', 'Take-5', 'Take-10', 'Take-All'];
+    function renderGroundItems(d) {
+      const el = document.getElementById('groundItems');
+      const arr = d?.groundItems;
+      if (!arr || !Array.isArray(arr)) { el.textContent = '—'; el.className = 'empty'; return; }
+      if (arr.length === 0) { el.textContent = 'None'; el.className = 'empty'; return; }
+      el.className = '';
+      const maxShow = 80;
+      el.innerHTML = '<div class="grid">' + arr.slice(0, maxShow).map(x => {
+        const namePart = (x.name && x.name !== 'null') ? x.id + ' (' + x.name + ')' : 'ID ' + x.id;
+        const qty = x.quantity != null ? ' × ' + x.quantity : '';
+        const pos = [x.worldX, x.worldY, x.plane].filter(v => v != null);
+        const posLine = pos.length >= 2 ? pos.join(', ') + (x.plane != null ? ' plane ' + x.plane : '') : '';
+        const geTotal = x.geTotal != null ? x.geTotal : (x.gePrice != null && x.quantity != null ? x.gePrice * x.quantity : null);
+        const haTotal = x.haTotal != null ? x.haTotal : (x.haPrice != null && x.quantity != null ? x.haPrice * x.quantity : null);
+        const geStr = (geTotal != null && geTotal > 0) ? 'GE: ' + formatPrice(geTotal) : '';
+        const haStr = (haTotal != null && haTotal > 0) ? 'HA: ' + formatPrice(haTotal) : '';
+        const valueLine = [geStr, haStr].filter(Boolean).join(' &nbsp; ');
+        const iconUrl = (x.id != null && x.id > 0) ? (base() + '/game/sprite/item/' + x.id) : '';
+        const iconImg = iconUrl ? '<img class="item-icon" src="' + iconUrl + '" alt="" onerror="this.style.display=\'none\'">' : '';
+        const actionsHtml = '<div class="ground-item-actions"><strong>Actions:</strong> ' + GROUND_ITEM_ACTIONS.map((a, idx) =>
+          '<span class="ground-item-action-link" data-id="' + (x.id ?? '') + '" data-world-x="' + (x.worldX ?? '') + '" data-world-y="' + (x.worldY ?? '') + '" data-plane="' + (x.plane ?? '0') + '" data-action-index="' + idx + '">' + escapeHtml(a) + '</span>'
+        ).join(', ') + '</div>';
+        return '<div class="card card-with-icon ground-item-card" tabindex="0">' + iconImg +
+          '<div>' +
+          '<strong>' + namePart + qty + '</strong>' +
+          (posLine ? '<br><span style="color:#94a3b8;font-size:11px">' + posLine + '</span>' : '') +
+          (valueLine ? '<br><span style="color:#7dd3fc;font-size:11px">' + valueLine + '</span>' : '') +
+          actionsHtml +
+          '</div></div>';
+      }).join('') + '</div>' + (arr.length > maxShow ? '<p style="margin:6px 0 0 0;font-size:11px;color:#94a3b8">(' + arr.length + ' total, showing ' + maxShow + ')</p>' : '');
+      el.querySelectorAll('.ground-item-card').forEach(function (card) {
+        card.addEventListener('click', function (e) {
+          if (e.target.classList.contains('ground-item-action-link')) {
+            e.preventDefault();
+            e.stopPropagation();
+            pauseAutoRefresh();
+            var link = e.target;
+            if (link.classList.contains('sending')) return;
+            link.classList.add('sending');
+            var body = new URLSearchParams({
+              id: link.getAttribute('data-id'),
+              worldX: link.getAttribute('data-world-x'),
+              worldY: link.getAttribute('data-world-y'),
+              plane: link.getAttribute('data-plane') || '0',
+              actionIndex: link.getAttribute('data-action-index') || '0'
+            });
+            fetch(base() + '/game/grounditem/action', { method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: body.toString() })
+              .then(function (r) { return r.json(); })
+              .then(function (data) {
+                link.classList.remove('sending');
+                if (data.error) statusEl.textContent = 'Action failed: ' + data.error;
+                else if (data.ok) statusEl.textContent = 'OK';
+              })
+              .catch(function (err) { link.classList.remove('sending'); statusEl.textContent = 'Error: ' + (err.message || 'Request failed'); });
+            return;
+          }
+          card.classList.toggle('expanded');
+          if (card.classList.contains('expanded')) {
+            pauseAutoRefresh();
+          } else {
+            resumeAutoRefresh();
+          }
+        });
+      });
+    }
+
+    function escapeHtml(s) {
+      const div = document.createElement('div');
+      div.textContent = s;
+      return div.innerHTML;
+    }
+
+    async function fetchState() {
+      if (window._pauseRefresh) return;
+      try {
+        const r = await fetch(base() + '/game/state?t=' + Date.now());
+        if (window._pauseRefresh) return;
+        if (!r.ok) throw new Error(r.status + ' ' + r.statusText);
+        const data = await r.json();
+        if (window._pauseRefresh) return;
+        setStatus(true);
+        var vEl = document.getElementById('agentVersion');
+        if (vEl) vEl.textContent = data.agentVersion ? ' (agent ' + data.agentVersion + ')' : ' (agent version unknown — run MiddleMan\\attach-and-open.bat to rebuild & attach; if it still shows unknown, restart RuneLite once then run the bat again)';
+        renderGameState(data);
+        renderLocalPlayer(data);
+        renderEquipment(data);
+        renderList('players', data.players, ['name', 'worldX', 'worldY', 'combatLevel']);
+        renderNpcs(data);
+        renderWorldObjects(data);
+        renderGroundItems(data);
+        renderWorldView(data);
+        renderInventory(data);
+        renderCamera(data);
+      } catch (e) {
+        if (Date.now() - loadStartTime < LOADING_TIMEOUT_MS) {
+          setStatusLoading();
+          return;
+        }
+        setStatus(false, e.message || 'Failed to connect');
+        document.getElementById('gameState').innerHTML = '<span class="empty">—</span><p style="margin-top:10px;font-size:12px;color:#94a3b8;max-width:480px"><strong>Failed to connect?</strong><br>1) Run <strong>MiddleMan.exe</strong> or start RuneLite with <strong>MiddleMan\\launcher\\launch.bat</strong> (not the normal RuneLite shortcut).<br>2) Or run <strong>MiddleMan.exe</strong> to start RuneLite with the agent.<br>3) Open <strong>MiddleMan\middleman.log</strong> to see agent status (e.g. “API listening” = ready).</p>';
+        document.getElementById('localPlayer').textContent = '—';
+        document.getElementById('equipment').textContent = '—';
+        document.getElementById('players').textContent = '—';
+        document.getElementById('npcs').textContent = '—';
+        document.getElementById('worldObjects').textContent = '—';
+        document.getElementById('groundItems').textContent = '—';
+        document.getElementById('worldView').textContent = '—';
+        document.getElementById('inventory').textContent = '—';
+        document.getElementById('camera').textContent = '—';
+        [].forEach.call(document.querySelectorAll('#localPlayer, #equipment, #players, #npcs, #worldObjects, #groundItems, #worldView, #inventory, #camera'), function (el) { el.className = 'empty'; });
+      }
+    }
+
+    refreshEl.addEventListener('click', function () {
+      var wasPaused = window._pauseRefresh;
+      window._pauseRefresh = false;
+      fetchState();
+      if (wasPaused) window._pauseRefresh = true;
+    });
+    autoEl.addEventListener('change', function () {
+      if (autoEl.checked) {
+        stopAutoRefresh();
+        window._mid = setInterval(fetchState, 50);
+        fetchState();
+      } else {
+        stopAutoRefresh();
+      }
+    });
+
+    document.addEventListener('click', function (e) {
+      if (!e.target.closest('.world-object-card') && !e.target.closest('.npc-card') && !e.target.closest('.ground-item-card')) {
+        if (window._pauseRefresh) unpauseAutoRefresh();
+      }
+    });
+
+    fetchState();
+    if (autoEl.checked) {
+      stopAutoRefresh();
+      window._mid = setInterval(fetchState, 50);
+    }
+  </script>
+</body>
+</html>

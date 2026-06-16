@@ -1,0 +1,7 @@
+# Generated build artifacts (do not commit)
+agent/build/
+
+# Runtime/debug logs (local only)
+middleman.log
+debug-*.log
+
