@@ -4,6 +4,8 @@ OSRS MiddleMan is a local RuneLite bridge. It loads a Java agent into a RuneLite
 
 The project is designed to work without recompiling RuneLite. It either starts RuneLite with the agent or attaches the agent to an already running RuneLite process that was launched with attach support enabled.
 
+> **Security notice:** the API can inspect live gameplay and trigger supported in-game actions. It must remain bound to `127.0.0.1`; never expose it through a network, proxy, or port-forwarding service. Only use this tooling where it is permitted.
+
 ## Features
 
 - Java agent loaded with `-javaagent` or through the JDK attach API.
@@ -65,6 +67,8 @@ The wrapper compiles `OpenDashboard.cs` into `MiddleMan.exe` using the .NET Fram
 | One-click wrapper | `MiddleMan.exe` | Builds the agent if possible, attaches or starts RuneLite, then opens the dashboard. |
 
 ## API
+
+The API is intentionally loopback-only. Its POST endpoints can trigger in-game actions, so do not bind or relay this service beyond `127.0.0.1`.
 
 Base URL:
 

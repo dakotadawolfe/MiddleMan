@@ -1,7 +1,14 @@
 # Generated build artifacts (do not commit)
 agent/build/
+MiddleMan.exe
 
 # Runtime/debug logs (local only)
 middleman.log
 debug-*.log
+
+# Local gameplay snapshots and captures (never commit)
+middleman-last-state.json
+*-last-state.json
+captures/
+snapshots/
 
